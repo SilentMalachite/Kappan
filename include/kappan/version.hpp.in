@@ -1,0 +1,11 @@
+#pragma once
+
+#include <string>
+
+#define KAPPAN_VERSION_STRING "@PROJECT_VERSION@"
+
+namespace kappan {
+
+[[nodiscard]] std::string version_string();
+
+} // namespace kappan
