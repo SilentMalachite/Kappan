@@ -4,6 +4,9 @@
   "version-semver": "0.1.0",
   "dependencies": [
     "cli11",
-    "catch2"
+    "catch2",
+    "cmark-gfm",
+    "spdlog",
+    "tl-expected"
   ]
 }
