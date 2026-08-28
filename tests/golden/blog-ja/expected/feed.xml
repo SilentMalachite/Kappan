@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>活版ブログ</title>
+    <link>https://example.com/</link>
+    <description>日本語と絵文字 🐙 を含むサイト</description>
+    <language>ja</language>
+    <item>
+      <title>新しい記事</title>
+      <link>https://example.com/posts/新しい/</link>
+      <guid isPermaLink="true">https://example.com/posts/新しい/</guid>
+      <pubDate>Sat, 03 Jan 2026 00:00:00 +0000</pubDate>
+      <description>&lt;p&gt;三番目の記事です。&lt;/p&gt;
+</description>
+    </item>
+    <item>
+      <title>絵文字の話</title>
+      <link>https://example.com/posts/絵文字/</link>
+      <guid isPermaLink="true">https://example.com/posts/絵文字/</guid>
+      <pubDate>Fri, 02 Jan 2026 00:00:00 +0000</pubDate>
+      <description>&lt;p&gt;二番目の記事です 🐙。&lt;/p&gt;
+</description>
+    </item>
+    <item>
+      <title>こんにちは</title>
+      <link>https://example.com/posts/こんにちは/</link>
+      <guid isPermaLink="true">https://example.com/posts/こんにちは/</guid>
+      <pubDate>Thu, 01 Jan 2026 00:00:00 +0000</pubDate>
+      <description>&lt;p&gt;最初の記事です。&lt;/p&gt;
+</description>
+    </item>
+  </channel>
+</rss>
