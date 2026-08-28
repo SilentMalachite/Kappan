@@ -1,5 +1,7 @@
 #include "util/datetime.hpp"
 
+#include <format>
+
 namespace kappan::util {
 namespace {
 
@@ -56,6 +58,24 @@ std::optional<std::chrono::sys_seconds> try_parse_iso_datetime(std::string_view 
   }
   return tp + std::chrono::hours{*hour} + std::chrono::minutes{*minute} +
          std::chrono::seconds{*second};
+}
+
+std::string format_iso_datetime(std::chrono::sys_seconds tp) {
+  const auto day_point = std::chrono::floor<std::chrono::days>(tp);
+  const std::chrono::year_month_day ymd{day_point};
+  const auto year = static_cast<int>(ymd.year());
+  const auto month = static_cast<unsigned>(ymd.month());
+  const auto day = static_cast<unsigned>(ymd.day());
+  const auto since_midnight = tp - std::chrono::sys_seconds{day_point};
+  if (since_midnight == std::chrono::seconds{0}) {
+    return std::format("{:04}-{:02}-{:02}", year, month, day);
+  }
+  const auto hours = std::chrono::duration_cast<std::chrono::hours>(since_midnight);
+  const auto minutes = std::chrono::duration_cast<std::chrono::minutes>(since_midnight - hours);
+  const auto seconds =
+      std::chrono::duration_cast<std::chrono::seconds>(since_midnight - hours - minutes);
+  return std::format("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}", year, month, day, hours.count(),
+                     minutes.count(), seconds.count());
 }
 
 DatedStem split_dated_stem(std::string_view stem) {

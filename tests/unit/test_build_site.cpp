@@ -33,6 +33,8 @@ TEST_CASE("build_site writes pretty URLs for a Japanese blog") {
 
   const auto home = read_all(out / "index.html");
   REQUIRE(home.find("ホーム 🐙") != std::string::npos);
+  REQUIRE(home.find("<html lang=\"ja\">") != std::string::npos);
+  REQUIRE(home.find("<article>") != std::string::npos);
   REQUIRE_FALSE(home.starts_with("\xEF\xBB\xBF"));
 
   const auto about = read_all(out / "about" / "index.html");

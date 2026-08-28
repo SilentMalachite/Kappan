@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="{{ site.language }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ site.title }}{% endblock %}</title>
+  {% if site.description %}
+  <meta name="description" content="{{ site.description }}">
+  {% endif %}
+  <style>
+    body { max-width: 40rem; margin: 1.5rem auto; padding: 0 1rem; line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <header>
+    <p><a href="/">{{ site.title }}</a></p>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

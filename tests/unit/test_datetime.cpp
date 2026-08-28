@@ -18,6 +18,17 @@ TEST_CASE("try_parse_iso_datetime accepts a local datetime") {
   REQUIRE(*value == expected);
 }
 
+TEST_CASE("format_iso_datetime prints a calendar date at midnight") {
+  const auto value = std::chrono::sys_days{std::chrono::year{2026} / 1 / 1};
+  REQUIRE(kappan::util::format_iso_datetime(value) == "2026-01-01");
+}
+
+TEST_CASE("format_iso_datetime prints a local datetime") {
+  const auto value = std::chrono::sys_days{std::chrono::year{2026} / 1 / 1} +
+                     std::chrono::hours{15} + std::chrono::minutes{4} + std::chrono::seconds{5};
+  REQUIRE(kappan::util::format_iso_datetime(value) == "2026-01-01T15:04:05");
+}
+
 TEST_CASE("try_parse_iso_datetime rejects impossible dates") {
   REQUIRE_FALSE(kappan::util::try_parse_iso_datetime("2026-13-01"));
   REQUIRE_FALSE(kappan::util::try_parse_iso_datetime("2026-01-32"));

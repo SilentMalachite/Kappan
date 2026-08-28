@@ -14,6 +14,23 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(cmark-gfm CONFIG REQUIRED)
 find_package(cmark-gfm-extensions CONFIG REQUIRED)
 find_package(yaml-cpp CONFIG REQUIRED)
+find_package(inja CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+
+set(KAPPAN_THEME_DIR ${CMAKE_SOURCE_DIR}/themes/default)
+set(KAPPAN_EMBEDDED_THEME ${CMAKE_BINARY_DIR}/include/kappan/embedded_theme.hpp)
+set_property(
+  DIRECTORY
+  APPEND
+  PROPERTY CMAKE_CONFIGURE_DEPENDS
+           ${KAPPAN_THEME_DIR}/base.html
+           ${KAPPAN_THEME_DIR}/post.html
+           ${KAPPAN_THEME_DIR}/page.html
+           ${CMAKE_SOURCE_DIR}/cmake/embed_theme.cmake)
+execute_process(
+  COMMAND ${CMAKE_COMMAND} -DINPUT_DIR=${KAPPAN_THEME_DIR} -DOUTPUT=${KAPPAN_EMBEDDED_THEME} -P
+          ${CMAKE_SOURCE_DIR}/cmake/embed_theme.cmake
+  COMMAND_ERROR_IS_FATAL ANY)
 
 add_library(
   kappan_lib STATIC
@@ -27,7 +44,11 @@ add_library(
   src/content/convert.cpp
   src/content/scan.cpp
   src/content/parse.cpp
-  src/content/build.cpp)
+  src/content/build.cpp
+  src/content/scaffold.cpp
+  src/render/escape.cpp
+  src/render/context.cpp
+  src/render/engine.cpp)
 add_library(kappan::lib ALIAS kappan_lib)
 
 configure_file(
@@ -47,7 +68,7 @@ target_compile_definitions(kappan_lib PUBLIC CMARK_GFM_STATIC_DEFINE CMARK_GFM_E
 target_link_libraries(
   kappan_lib
   PUBLIC tl::expected spdlog::spdlog libcmark-gfm-extensions_static libcmark-gfm_static
-  PRIVATE yaml-cpp::yaml-cpp)
+  PRIVATE yaml-cpp::yaml-cpp pantor::inja nlohmann_json::nlohmann_json)
 
 function(kappan_set_warnings target)
   if(MSVC)

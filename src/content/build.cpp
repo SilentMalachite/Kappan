@@ -2,6 +2,7 @@
 
 #include "content/parse.hpp"
 #include "content/scan.hpp"
+#include "render/engine.hpp"
 #include "util/path.hpp"
 #include "util/utf8.hpp"
 
@@ -39,6 +40,12 @@ BuildResult build_site(const std::filesystem::path &source, const std::filesyste
     return result;
   }
 
+  auto engine = render::Engine::load(*config);
+  if (!engine) {
+    result.errors.push_back(engine.error());
+    return result;
+  }
+
   std::map<std::string, std::filesystem::path> permalinks;
   for (const auto &file : *files) {
     auto document = parse_document(file, *config);
@@ -55,8 +62,13 @@ BuildResult build_site(const std::filesystem::path &source, const std::filesyste
       continue;
     }
     permalinks.emplace(document->permalink, file);
-    const auto out_path = out_dir / document->output_path;
-    auto written = util::write_utf8_file(out_path, document->body_html);
+    auto page = engine->render(*document);
+    if (!page) {
+      result.errors.push_back(page.error());
+      continue;
+    }
+    const auto out_path = out_dir / page->output_path;
+    auto written = util::write_utf8_file(out_path, page->html);
     if (!written) {
       result.errors.push_back(written.error());
       continue;

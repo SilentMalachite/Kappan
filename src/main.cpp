@@ -1,6 +1,7 @@
 #include <kappan/version.hpp>
 
 #include "content/build.hpp"
+#include "content/scaffold.hpp"
 #include "util/path.hpp"
 
 #include <CLI/CLI.hpp>
@@ -25,6 +26,10 @@ int main(int argc, char **argv) {
     build->add_option("--source", source, "サイト根ディレクトリ（site.yaml）")->required();
     build->add_option("--out", out, "出力ディレクトリ")->required();
 
+    std::filesystem::path new_dir;
+    auto *new_cmd = app.add_subcommand("new", "サイトの骨格を作る");
+    new_cmd->add_option("dir", new_dir, "作成するディレクトリ")->required();
+
     CLI11_PARSE(app, argc, argv);
     if (verbose) {
       spdlog::set_level(spdlog::level::debug);
@@ -38,6 +43,13 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
       }
       spdlog::debug("wrote {} pages to {}", result.pages_written, kappan::util::to_utf8(out));
+    }
+    if (new_cmd->parsed()) {
+      const auto created = kappan::content::create_site(new_dir);
+      if (!created) {
+        spdlog::error("{}", created.error().message);
+        return EXIT_FAILURE;
+      }
     }
     return EXIT_SUCCESS;
   } catch (const std::exception &ex) {
