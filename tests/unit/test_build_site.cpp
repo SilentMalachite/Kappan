@@ -79,3 +79,89 @@ TEST_CASE("build_site reports a missing site.yaml") {
   REQUIRE(result.errors.front().code == kappan::ErrorCode::Config);
   std::filesystem::remove_all(source);
 }
+
+TEST_CASE("build_site reports a missing content directory") {
+  const auto source = std::filesystem::temp_directory_path() / "kappan-no-content";
+  std::filesystem::create_directories(source);
+  {
+    std::ofstream out(source / "site.yaml", std::ios::binary);
+    out << "title: コンテンツ無し\n";
+  }
+  const auto result = kappan::content::build_site(source, source / "out");
+  REQUIRE_FALSE(result.ok());
+  REQUIRE(result.errors.front().code == kappan::ErrorCode::Config);
+  REQUIRE(result.errors.front().message.find("content") != std::string::npos);
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("build_site skips underscore directories") {
+  const auto source = std::filesystem::temp_directory_path() / "kappan-skip-underscore";
+  const auto content = source / "content";
+  std::filesystem::create_directories(content / kappan::util::from_utf8("_下書き"));
+  {
+    std::ofstream out(source / "site.yaml", std::ios::binary);
+    out << "title: 下書き除外\n";
+  }
+  {
+    std::ofstream out(content / kappan::util::from_utf8("見える.md"), std::ios::binary);
+    out << "---\ntitle: 見える\n---\n公開する\n";
+  }
+  {
+    std::ofstream out(content / kappan::util::from_utf8("_下書き") / "secret.md", std::ios::binary);
+    out << "---\ntitle: 秘密\n---\n出てはいけない\n";
+  }
+  const auto out = source / "out";
+  const auto result = kappan::content::build_site(source, out);
+  REQUIRE(result.ok());
+  REQUIRE(result.pages_written == 1);
+  REQUIRE(std::filesystem::exists(out / kappan::util::from_utf8("見える") / "index.html"));
+  REQUIRE_FALSE(std::filesystem::exists(out / kappan::util::from_utf8("秘密") / "index.html"));
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("build_site aggregates permalink collisions") {
+  const auto source = std::filesystem::temp_directory_path() / "kappan-permalink-collision";
+  const auto content = source / "content";
+  std::filesystem::create_directories(content);
+  {
+    std::ofstream out(source / "site.yaml", std::ios::binary);
+    out << "title: 衝突\n";
+  }
+  {
+    std::ofstream out(content / "a.md", std::ios::binary);
+    out << "---\nslug: 同じ\n---\nA\n";
+  }
+  {
+    std::ofstream out(content / "b.md", std::ios::binary);
+    out << "---\nslug: 同じ\n---\nB\n";
+  }
+  const auto out = source / "out";
+  const auto result = kappan::content::build_site(source, out);
+  REQUIRE_FALSE(result.ok());
+  REQUIRE(result.pages_written == 1);
+  REQUIRE(result.errors.front().code == kappan::ErrorCode::Path);
+  REQUIRE(result.errors.front().message.find("permalink") != std::string::npos);
+  REQUIRE(std::filesystem::exists(out / kappan::util::from_utf8("同じ") / "index.html"));
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("build_site writes draft pages in phase 2") {
+  const auto source = std::filesystem::temp_directory_path() / "kappan-draft-out";
+  const auto content = source / "content";
+  std::filesystem::create_directories(content);
+  {
+    std::ofstream out(source / "site.yaml", std::ios::binary);
+    out << "title: 下書き出力\n";
+  }
+  {
+    std::ofstream out(content / kappan::util::from_utf8("下書き.md"), std::ios::binary);
+    out << "---\ntitle: 下書き\ndraft: true\n---\nPhase 2 では出す\n";
+  }
+  const auto out = source / "out";
+  const auto result = kappan::content::build_site(source, out);
+  REQUIRE(result.ok());
+  REQUIRE(result.pages_written == 1);
+  const auto html = read_all(out / kappan::util::from_utf8("下書き") / "index.html");
+  REQUIRE(html.find("Phase 2 では出す") != std::string::npos);
+  std::filesystem::remove_all(source);
+}

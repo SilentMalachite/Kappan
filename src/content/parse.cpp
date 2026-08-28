@@ -227,6 +227,30 @@ struct SplitMatter {
   return it != relative.end() && *it == "posts";
 }
 
+void apply_source_defaults(FrontMatter &fm, const std::filesystem::path &relative,
+                           const util::DatedStem &dated) {
+  if (fm.title.empty()) {
+    fm.title = dated.stem;
+  }
+  if (fm.layout.empty()) {
+    fm.layout = is_post(relative) ? "post" : "page";
+  }
+  if (!fm.date) {
+    fm.date = dated.date;
+  }
+  if (fm.slug.empty()) {
+    if (auto from_stem = util::try_slugify(dated.stem)) {
+      fm.slug = std::move(*from_stem);
+    } else if (auto from_title = util::try_slugify(fm.title)) {
+      fm.slug = std::move(*from_title);
+    } else {
+      fm.slug = util::slugify(dated.stem);
+    }
+  } else {
+    fm.slug = util::slugify(fm.slug);
+  }
+}
+
 [[nodiscard]] std::filesystem::path output_from_permalink(std::string_view permalink) {
   if (permalink == "/") {
     return std::filesystem::path{"index.html"};
@@ -271,19 +295,7 @@ Result<Document> parse_document(const std::filesystem::path &source, const Confi
   }
 
   const auto dated = util::split_dated_stem(util::to_utf8(source.stem()));
-  if (fm->title.empty()) {
-    fm->title = dated.stem;
-  }
-  if (fm->layout.empty()) {
-    fm->layout = is_post(relative) ? "post" : "page";
-  }
-  if (!fm->date) {
-    fm->date = dated.date;
-  }
-  if (fm->slug.empty()) {
-    fm->slug = dated.stem;
-  }
-  fm->slug = util::slugify(fm->slug);
+  apply_source_defaults(*fm, relative, dated);
 
   Document document;
   document.source = source;

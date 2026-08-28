@@ -112,3 +112,135 @@ TEST_CASE("parse_document maps index.md to the site root") {
   REQUIRE(result->permalink == "/");
   REQUIRE(result->output_path == std::filesystem::path{"index.html"});
 }
+
+TEST_CASE("parse_document reports unclosed front matter") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-fm-unclosed";
+  const auto content = root / "content";
+  std::filesystem::create_directories(content);
+  const auto source = content / kappan::util::from_utf8("閉じなし.md");
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\ntitle: 閉じなし\n本文だけ\n";
+  }
+  const auto result = kappan::content::parse_document(source, test_config(root));
+  REQUIRE_FALSE(result);
+  REQUIRE(result.error().code == kappan::ErrorCode::FrontMatter);
+  REQUIRE(result.error().line.has_value());
+  REQUIRE(*result.error().line == 1);
+  REQUIRE(result.error().message.find("閉じ") != std::string::npos);
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("parse_document uses the filename date when front matter has none") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-fm-filename-date";
+  const auto content = root / "content" / "posts";
+  std::filesystem::create_directories(content);
+  const auto source = content / kappan::util::from_utf8("2026-02-03-名前.md");
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\ntitle: 名前\n---\nファイル名の日付\n";
+  }
+  const auto result = kappan::content::parse_document(source, test_config(root));
+  REQUIRE(result);
+  REQUIRE(result->front_matter.layout == "post");
+  REQUIRE(result->front_matter.slug == "名前");
+  REQUIRE(result->front_matter.date);
+  REQUIRE(*result->front_matter.date == std::chrono::sys_days{std::chrono::year{2026} / 2 / 3});
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("parse_document prefers front matter date over the filename") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-fm-date-override";
+  const auto content = root / "content" / "posts";
+  std::filesystem::create_directories(content);
+  const auto source = content / "2026-01-01-hello.md";
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\ntitle: 上書き\ndate: 2026-12-31\n---\n本文\n";
+  }
+  const auto result = kappan::content::parse_document(source, test_config(root));
+  REQUIRE(result);
+  REQUIRE(result->front_matter.date);
+  REQUIRE(*result->front_matter.date == std::chrono::sys_days{std::chrono::year{2026} / 12 / 31});
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("parse_document slugifies an explicit slug") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-fm-explicit-slug";
+  const auto content = root / "content";
+  std::filesystem::create_directories(content);
+  const auto source = content / "page.md";
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\ntitle: 見出し\nslug: カスタム 🐙\n---\n本文\n";
+  }
+  const auto result = kappan::content::parse_document(source, test_config(root));
+  REQUIRE(result);
+  REQUIRE(result->front_matter.slug == "カスタム-🐙");
+  REQUIRE(result->permalink == "/カスタム-🐙/");
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("parse_document falls back to title when the stem is not a slug") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-fm-slug-title";
+  const auto content = root / "content";
+  std::filesystem::create_directories(content);
+  const auto source = content / "---.md";
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\ntitle: こんにちは 世界\n---\n本文\n";
+  }
+  const auto result = kappan::content::parse_document(source, test_config(root));
+  REQUIRE(result);
+  REQUIRE(result->front_matter.slug == "こんにちは-世界");
+  REQUIRE(result->permalink == "/こんにちは-世界/");
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("parse_document keeps a usable untitled stem") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-fm-slug-untitled";
+  const auto content = root / "content";
+  std::filesystem::create_directories(content);
+  const auto source = content / "untitled.md";
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\ntitle: こんにちは\n---\n本文\n";
+  }
+  const auto result = kappan::content::parse_document(source, test_config(root));
+  REQUIRE(result);
+  REQUIRE(result->front_matter.slug == "untitled");
+  REQUIRE(result->permalink == "/untitled/");
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("parse_document keeps draft true") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-fm-draft";
+  const auto content = root / "content";
+  std::filesystem::create_directories(content);
+  const auto source = content / kappan::util::from_utf8("下書き.md");
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\ntitle: 下書き\ndraft: true\n---\nまだ公開しない\n";
+  }
+  const auto result = kappan::content::parse_document(source, test_config(root));
+  REQUIRE(result);
+  REQUIRE(result->front_matter.draft);
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("parse_document reports non-sequence tags") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-fm-tags";
+  const auto content = root / "content";
+  std::filesystem::create_directories(content);
+  const auto source = content / "tags.md";
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\ntitle: タグ\ntags: 日本語\n---\n本文\n";
+  }
+  const auto result = kappan::content::parse_document(source, test_config(root));
+  REQUIRE_FALSE(result);
+  REQUIRE(result.error().code == kappan::ErrorCode::FrontMatter);
+  REQUIRE(result.error().line.has_value());
+  REQUIRE(result.error().message.find("tags") != std::string::npos);
+  std::filesystem::remove_all(root);
+}

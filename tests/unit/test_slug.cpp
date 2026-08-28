@@ -22,3 +22,11 @@ TEST_CASE("slugify collapses dashes and rejects empty") {
   REQUIRE(kappan::util::slugify("  --  ") == "untitled");
   REQUIRE(kappan::util::slugify("") == "untitled");
 }
+
+TEST_CASE("try_slugify returns nullopt for reserved-only input") {
+  REQUIRE_FALSE(kappan::util::try_slugify("***"));
+  REQUIRE_FALSE(kappan::util::try_slugify("---"));
+  const auto literal = kappan::util::try_slugify("untitled");
+  REQUIRE(literal);
+  REQUIRE(*literal == "untitled");
+}

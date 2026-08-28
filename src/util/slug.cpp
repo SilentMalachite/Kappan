@@ -38,7 +38,7 @@ void append_utf8(std::string &out, char32_t cp) {
 
 } // namespace
 
-std::string slugify(std::string_view text) {
+std::optional<std::string> try_slugify(std::string_view text) {
   std::string out;
   bool last_dash = false;
   auto rest = text;
@@ -71,9 +71,16 @@ std::string slugify(std::string_view text) {
     out.pop_back();
   }
   if (out.empty()) {
-    return "untitled";
+    return std::nullopt;
   }
   return out;
+}
+
+std::string slugify(std::string_view text) {
+  if (auto slug = try_slugify(text)) {
+    return std::move(*slug);
+  }
+  return std::string{kUntitledSlug};
 }
 
 } // namespace kappan::util
