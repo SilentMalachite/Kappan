@@ -53,7 +53,8 @@ add_library(
   src/render/escape.cpp
   src/render/context.cpp
   src/render/engine.cpp
-  src/output/xml.cpp)
+  src/output/xml.cpp
+  src/output/write.cpp)
 add_library(kappan::lib ALIAS kappan_lib)
 
 configure_file(
