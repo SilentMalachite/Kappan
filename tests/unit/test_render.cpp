@@ -112,3 +112,11 @@ TEST_CASE("Engine lets site templates override the embedded post layout") {
   REQUIRE(page->html.find("<article>") == std::string::npos);
   std::filesystem::remove_all(root);
 }
+
+TEST_CASE("html_escape drops forbidden control characters too") {
+  REQUIRE(kappan::render::html_escape("前"
+                                      "\x0c"
+                                      "後") == "前後");
+  REQUIRE(kappan::render::html_escape("a\tb\nc") == "a\tb\nc");
+  REQUIRE(kappan::render::html_escape("日本語 🐙") == "日本語 🐙");
+}

@@ -16,6 +16,7 @@
 #include <format>
 #include <map>
 #include <optional>
+#include <set>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -23,26 +24,30 @@
 namespace kappan::content {
 namespace {
 
-[[nodiscard]] bool claim_permalink(std::map<std::string, std::filesystem::path> &permalinks,
-                                   const std::string &permalink,
+[[nodiscard]] bool claim_permalink(output::ClaimedOutputs &permalinks, const std::string &permalink,
                                    const std::filesystem::path &source, BuildResult &result) {
-  if (auto it = permalinks.find(permalink); it != permalinks.end()) {
-    result.errors.push_back(make_error(ErrorCode::Path,
-                                       std::format("{}: permalink '{}' が {} と衝突しています",
-                                                   util::to_generic_utf8(source), permalink,
-                                                   util::to_generic_utf8(it->second)),
-                                       source));
+  return output::claim_unique(permalinks, permalink, "permalink", source, result.errors);
+}
+
+// HTML と XML を実際に書くのはここだけ。static のコピーは copy_one が同じ関門を通る。
+[[nodiscard]] bool write_output_file(BuildResult &result, const std::filesystem::path &dest,
+                                     const std::filesystem::path &source,
+                                     std::string_view content) {
+  if (!output::claim_destination(dest, source, result.errors)) {
     return false;
   }
-  permalinks.emplace(permalink, source);
+  auto written = util::write_utf8_file(dest, content);
+  if (!written) {
+    result.errors.push_back(written.error());
+    return false;
+  }
   return true;
 }
 
 [[nodiscard]] bool write_page(BuildResult &result, const std::filesystem::path &out_dir,
+                              const std::filesystem::path &source,
                               const render::RenderedPage &page) {
-  auto written = util::write_utf8_file(out_dir / page.output_path, page.html);
-  if (!written) {
-    result.errors.push_back(written.error());
+  if (!write_output_file(result, out_dir / page.output_path, source, page.html)) {
     return false;
   }
   ++result.pages_written;
@@ -57,28 +62,28 @@ void record_page(BuildResult &result, output::ClaimedOutputs &claimed,
                             result.errors)) {
     return;
   }
-  if (!write_page(result, out_dir, page)) {
+  if (!write_page(result, out_dir, source, page)) {
     return;
   }
   sitemap_urls.push_back(std::move(url));
 }
 
+// body は遅延生成する。claim に失敗する出力先のために XML 全体を組み立てても捨てるだけ。
+template <typename RenderBody>
 void write_xml(BuildResult &result, output::ClaimedOutputs &claimed,
                const std::filesystem::path &source, const std::filesystem::path &out_dir,
-               std::string_view name, std::string_view body) {
+               std::string_view name, RenderBody &&render_body) {
   if (!output::claim_output(claimed, name, source, result.errors)) {
     return;
   }
-  auto written = util::write_utf8_file(out_dir / std::filesystem::path{name}, body);
-  if (!written) {
-    result.errors.push_back(written.error());
-  }
+  static_cast<void>(
+      write_output_file(result, out_dir / std::filesystem::path{name}, source, render_body()));
 }
 
 void publish_html(BuildResult &result, const Site &built, const render::Engine &engine,
                   const std::filesystem::path &out_dir, output::ClaimedOutputs &claimed,
                   std::vector<output::SitemapUrl> &sitemap_urls) {
-  std::map<std::string, std::filesystem::path> permalinks;
+  output::ClaimedOutputs permalinks;
   for (const auto &document : built.documents) {
     if (!claim_permalink(permalinks, document.permalink, document.source, result)) {
       continue;
@@ -94,6 +99,9 @@ void publish_html(BuildResult &result, const Site &built, const render::Engine &
 
   const auto listing = site::paginate(built.posts.indices, built.config.posts_per_page);
   for (const auto &page : listing) {
+    // 1 ページ目の permalink は "/" で、content/index.md と必ず重なる。
+    // これは衝突ではなく「Document が一覧より優先される」という規則なので、
+    // 上下のループと違ってエラーにせず黙って飛ばす。
     if (permalinks.contains(page.permalink)) {
       continue;
     }
@@ -102,9 +110,8 @@ void publish_html(BuildResult &result, const Site &built, const render::Engine &
       result.errors.push_back(rendered.error());
       continue;
     }
-    if (!claim_permalink(permalinks, page.permalink, built.config.source_root, result)) {
-      continue;
-    }
+    // 直前の contains で不在は確定しているので、ここでの claim は必ず成功する。
+    permalinks.emplace(page.permalink, built.config.source_root);
     record_page(result, claimed, sitemap_urls, out_dir, built.config.source_root, *rendered,
                 {page.permalink, std::nullopt});
   }
@@ -129,16 +136,21 @@ void publish_feeds(BuildResult &result, output::ClaimedOutputs &claimed, const S
   if (built.config.url.empty()) {
     return;
   }
+  // sitemap_urls を move する前に集合を作る。feed は sitemap と同じ集合を根拠にする。
+  std::set<std::string> written;
+  for (const auto &url : sitemap_urls) {
+    written.insert(url.permalink);
+  }
   write_xml(result, claimed, built.config.source_root, out_dir, "sitemap.xml",
-            output::render_sitemap(built.config.url, std::move(sitemap_urls)));
+            [&] { return output::render_sitemap(built.config.url, std::move(sitemap_urls)); });
   write_xml(result, claimed, built.config.source_root, out_dir, "feed.xml",
-            output::render_feed(built));
+            [&] { return output::render_feed(built, written); });
 }
 
 } // namespace
 
 BuildResult build_site(const std::filesystem::path &source, const std::filesystem::path &out_dir,
-                       DraftPolicy drafts) {
+                       DraftPolicy drafts, output::OutDirPolicy out_policy) {
   BuildResult result;
   std::error_code ec;
   if (std::filesystem::is_regular_file(source, ec)) {
@@ -181,7 +193,7 @@ BuildResult build_site(const std::filesystem::path &source, const std::filesyste
     return result;
   }
 
-  auto prepared = output::prepare_out_dir(source, out_dir);
+  auto prepared = output::prepare_out_dir(source, out_dir, out_policy);
   if (!prepared) {
     result.errors.push_back(prepared.error());
     return result;

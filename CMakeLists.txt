@@ -40,6 +40,7 @@ add_library(
   src/util/path.cpp
   src/util/utf8.cpp
   src/util/slug.cpp
+  src/util/escape.cpp
   src/util/datetime.cpp
   src/config/load.cpp
   src/markdown/cmark.cpp

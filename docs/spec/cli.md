@@ -17,7 +17,7 @@ kappan --verbose <subcommand>
 サイト根ディレクトリを読み、`content/` 以下の Markdown を HTML にする。`static/` をコピーし、`url` があれば `sitemap.xml` と `feed.xml` を書く。
 
 ```
-kappan build --source <site-root> --out <dir> [--drafts]
+kappan build --source <site-root> --out <dir> [--drafts] [--force]
 ```
 
 - `--source` は `site.yaml` のあるディレクトリ。ファイルを渡すと使い方を示して `ErrorCode::Cli` で終了する。
@@ -27,6 +27,7 @@ kappan build --source <site-root> --out <dir> [--drafts]
 - `--drafts` が無いとき `draft: true` の記事は出力しない。
 - 入力の UTF-8 BOM は読み捨て、出力には付けない。CRLF は LF に正規化する。
 - 書き出し前に `--out` を空にする。`--out` がソース根と同じ、またはソースが `--out` の内側なら `ErrorCode::Cli`。
+- `--out` が空でなく、kappan の出力先である印（`.kappan-out`）も無い場合は、**何も消さずに** `ErrorCode::Cli` で拒否する。`--force` を付けたときだけ消す。`--force` は上の 2 つの判定には効かない（ソースは常に守る）。
 - 詳細は [output.md](output.md)。
 
 ## `kappan new`

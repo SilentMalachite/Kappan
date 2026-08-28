@@ -1,6 +1,7 @@
 #include "output/xml.hpp"
 
 #include "util/datetime.hpp"
+#include "util/escape.hpp"
 
 #include <algorithm>
 #include <ranges>
@@ -36,33 +37,7 @@ void append_item(std::string &out, std::string_view base_url, const Document &do
 
 } // namespace
 
-std::string xml_escape(std::string_view text) {
-  std::string out;
-  out.reserve(text.size());
-  for (const char ch : text) {
-    switch (static_cast<unsigned char>(ch)) {
-    case '&':
-      out += "&amp;";
-      break;
-    case '<':
-      out += "&lt;";
-      break;
-    case '>':
-      out += "&gt;";
-      break;
-    case '"':
-      out += "&quot;";
-      break;
-    case '\'':
-      out += "&apos;";
-      break;
-    default:
-      out.push_back(ch);
-      break;
-    }
-  }
-  return out;
-}
+std::string xml_escape(std::string_view text) { return util::escape_markup(text, "&apos;"); }
 
 std::string join_url(std::string_view base_url, std::string_view permalink) {
   std::string base{base_url};
@@ -88,7 +63,7 @@ std::string render_sitemap(std::string_view base_url, std::vector<SitemapUrl> ur
     out += "</loc>\n";
     if (url.lastmod) {
       out += "    <lastmod>";
-      out += util::format_iso_datetime(*url.lastmod);
+      out += util::format_w3c_datetime(*url.lastmod);
       out += "</lastmod>\n";
     }
     out += "  </url>\n";
@@ -97,7 +72,7 @@ std::string render_sitemap(std::string_view base_url, std::vector<SitemapUrl> ur
   return out;
 }
 
-std::string render_feed(const Site &site) {
+std::string render_feed(const Site &site, const std::set<std::string> &written_permalinks) {
   const auto &config = site.config;
   const auto &description = config.description.empty() ? config.title : config.description;
 
@@ -118,7 +93,12 @@ std::string render_feed(const Site &site) {
   out += xml_escape(config.language);
   out += "</language>\n";
   for (const auto index : site.posts.indices) {
-    append_item(out, config.url, site.documents[index]);
+    const auto &document = site.documents[index];
+    // 書き出せなかった記事は sitemap にも入らない。feed だけが 404 を配らないようにする。
+    if (!written_permalinks.contains(document.permalink)) {
+      continue;
+    }
+    append_item(out, config.url, document);
   }
   out += "  </channel>\n";
   out += "</rss>\n";

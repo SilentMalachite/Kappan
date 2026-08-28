@@ -78,6 +78,16 @@ std::string format_iso_datetime(std::chrono::sys_seconds tp) {
                      minutes.count(), seconds.count());
 }
 
+std::string format_w3c_datetime(std::chrono::sys_seconds tp) {
+  const auto day_point = std::chrono::floor<std::chrono::days>(tp);
+  if (tp - std::chrono::sys_seconds{day_point} == std::chrono::seconds{0}) {
+    // complete date 形式。TZD を付けてはいけない。
+    return format_iso_datetime(tp);
+  }
+  // 値は sys_seconds つまり UTC なので、オフセットは常に Z。
+  return format_iso_datetime(tp) + "Z";
+}
+
 std::string format_display_date(std::chrono::sys_seconds tp) {
   const auto day_point = std::chrono::floor<std::chrono::days>(tp);
   const std::chrono::year_month_day ymd{day_point};

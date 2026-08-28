@@ -1,33 +1,9 @@
 #include "render/escape.hpp"
 
+#include "util/escape.hpp"
+
 namespace kappan::render {
 
-std::string html_escape(std::string_view text) {
-  std::string out;
-  out.reserve(text.size());
-  for (const char ch : text) {
-    switch (static_cast<unsigned char>(ch)) {
-    case '&':
-      out += "&amp;";
-      break;
-    case '<':
-      out += "&lt;";
-      break;
-    case '>':
-      out += "&gt;";
-      break;
-    case '"':
-      out += "&quot;";
-      break;
-    case '\'':
-      out += "&#39;";
-      break;
-    default:
-      out.push_back(ch);
-      break;
-    }
-  }
-  return out;
-}
+std::string html_escape(std::string_view text) { return util::escape_markup(text, "&#39;"); }
 
 } // namespace kappan::render

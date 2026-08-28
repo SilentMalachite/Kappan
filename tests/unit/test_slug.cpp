@@ -30,3 +30,19 @@ TEST_CASE("try_slugify returns nullopt for reserved-only input") {
   REQUIRE(literal);
   REQUIRE(*literal == "untitled");
 }
+
+TEST_CASE("try_slugify rejects dot-only input") {
+  REQUIRE_FALSE(kappan::util::try_slugify("."));
+  REQUIRE_FALSE(kappan::util::try_slugify(".."));
+  REQUIRE_FALSE(kappan::util::try_slugify("..."));
+  REQUIRE(kappan::util::slugify("..") == "untitled");
+}
+
+TEST_CASE("try_slugify keeps dots inside a name") {
+  const auto version = kappan::util::try_slugify("v1.2");
+  REQUIRE(version);
+  REQUIRE(*version == "v1.2");
+  const auto leading = kappan::util::try_slugify("..記事");
+  REQUIRE(leading);
+  REQUIRE(*leading == "..記事");
+}

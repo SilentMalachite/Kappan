@@ -29,6 +29,8 @@ int main(int argc, char **argv) {
     build->add_option("--out", out, "出力ディレクトリ")->required();
     bool include_drafts = false;
     build->add_flag("--drafts", include_drafts, "下書きを含める");
+    bool force = false;
+    build->add_flag("--force", force, "kappan の出力先でない非空ディレクトリでも消す");
 
     std::filesystem::path new_dir;
     auto *new_cmd = app.add_subcommand("new", "サイトの骨格を作る");
@@ -41,7 +43,9 @@ int main(int argc, char **argv) {
     if (build->parsed()) {
       const auto drafts =
           include_drafts ? kappan::DraftPolicy::Include : kappan::DraftPolicy::Exclude;
-      const auto result = kappan::content::build_site(source, out, drafts);
+      const auto out_policy =
+          force ? kappan::output::OutDirPolicy::Force : kappan::output::OutDirPolicy::Refuse;
+      const auto result = kappan::content::build_site(source, out, drafts, out_policy);
       for (const auto &error : result.errors) {
         spdlog::error("{}", error.message);
       }

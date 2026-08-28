@@ -60,3 +60,14 @@ TEST_CASE("split_dated_stem leaves an invalid date prefix in the stem") {
   REQUIRE(split.stem == "2026-13-01-hello");
   REQUIRE_FALSE(split.date);
 }
+
+TEST_CASE("format_w3c_datetime adds Z only to date-times") {
+  const auto midnight = std::chrono::sys_days{std::chrono::year{2026} / 1 / 1};
+  // complete date 形式は TZD 不要
+  REQUIRE(kappan::util::format_w3c_datetime(midnight) == "2026-01-01");
+  // 日時形式は TZD 必須。値は UTC なので Z。
+  const auto timed = midnight + std::chrono::hours{9} + std::chrono::minutes{30};
+  REQUIRE(kappan::util::format_w3c_datetime(timed) == "2026-01-01T09:30:00Z");
+  // テンプレート変数 date 用の書式は変えていない
+  REQUIRE(kappan::util::format_iso_datetime(timed) == "2026-01-01T09:30:00");
+}

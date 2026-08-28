@@ -73,6 +73,11 @@ std::optional<std::string> try_slugify(std::string_view text) {
   if (out.empty()) {
     return std::nullopt;
   }
+  // "." と ".." はパス成分として親を指し、出力先が --out の外へ逃げる。
+  // '.' 自体は予約文字にしない（"v1.2" や "..記事" のような slug を壊さないため）。
+  if (out.find_first_not_of('.') == std::string::npos) {
+    return std::nullopt;
+  }
   return out;
 }
 

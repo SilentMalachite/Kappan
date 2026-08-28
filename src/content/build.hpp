@@ -1,5 +1,7 @@
 #pragma once
 
+#include "output/write.hpp"
+
 #include <kappan/error.hpp>
 #include <kappan/site.hpp>
 
@@ -15,8 +17,9 @@ struct BuildResult {
   [[nodiscard]] bool ok() const { return errors.empty(); }
 };
 
-[[nodiscard]] BuildResult build_site(const std::filesystem::path &source,
-                                     const std::filesystem::path &out_dir,
-                                     DraftPolicy drafts = DraftPolicy::Exclude);
+[[nodiscard]] BuildResult
+build_site(const std::filesystem::path &source, const std::filesystem::path &out_dir,
+           DraftPolicy drafts = DraftPolicy::Exclude,
+           output::OutDirPolicy out_policy = output::OutDirPolicy::Refuse);
 
 } // namespace kappan::content
