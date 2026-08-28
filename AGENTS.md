@@ -77,7 +77,7 @@ kappan/
 │   ├── unit/
 │   ├── golden/         # 入力サイト → 期待 HTML の比較
 │   └── fixtures/       # 日本語・絵文字を含むこと（必須）
-├── themes/default/     # 同梱テーマ（blog.html / landing.html / base.html）
+├── themes/default/     # 同梱テーマ（base.html / post.html / page.html / landing.html）
 └── examples/
     ├── blog/
     └── landing/
