@@ -8,6 +8,8 @@
     "cmark-gfm",
     "spdlog",
     "tl-expected",
-    "yaml-cpp"
+    "yaml-cpp",
+    "inja",
+    "nlohmann-json"
   ]
 }
