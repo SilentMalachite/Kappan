@@ -7,9 +7,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 
 TEST_CASE("xml_escape converts XML special characters") {
   REQUIRE(kappan::output::xml_escape("A&B <c> \"'\"") == "A&amp;B &lt;c&gt; &quot;&apos;&quot;");
@@ -22,6 +24,23 @@ TEST_CASE("join_url strips trailing slashes and keeps Japanese permalinks") {
           "https://example.com/posts/こんにちは/");
   REQUIRE(kappan::output::join_url("https://example.com/blog/", "/about/") ==
           "https://example.com/blog/about/");
+}
+
+TEST_CASE("render_sitemap sorts permalinks and keeps Japanese loc") {
+  using kappan::output::SitemapUrl;
+  const auto day = std::chrono::sys_days{std::chrono::year{2026} / 1 / 1};
+  const auto xml = kappan::output::render_sitemap(
+      "https://example.com/", {{"/posts/こんにちは/", day}, {"/", std::nullopt}});
+  REQUIRE_FALSE(xml.starts_with("\xEF\xBB\xBF"));
+  REQUIRE(xml.find("xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"") != std::string::npos);
+  const auto home = xml.find("<loc>https://example.com/</loc>");
+  const auto post = xml.find("<loc>https://example.com/posts/こんにちは/</loc>");
+  REQUIRE(home != std::string::npos);
+  REQUIRE(post != std::string::npos);
+  REQUIRE(home < post);
+  REQUIRE(xml.find("<lastmod>2026-01-01</lastmod>") != std::string::npos);
+  const auto home_url_end = xml.find("</url>", home);
+  REQUIRE(xml.find("<lastmod>", home) > home_url_end);
 }
 
 TEST_CASE("prepare_out_dir rejects out equal to source without deleting it") {
