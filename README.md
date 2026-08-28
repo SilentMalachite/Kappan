@@ -41,8 +41,8 @@ cmake --build --preset release
 ./build/dev/kappan new my-site
 ```
 
-いま動くサブコマンドは `build`（Markdown 1 ファイル → HTML）です。`serve` / `new` は後のフェーズで足します。
+いま動くサブコマンドは `build`（`site.yaml` のあるサイト根 → HTML）です。`serve` / `new` は後のフェーズで足します。
 
 ```bash
-./build/dev/kappan build --source tests/fixtures/ja_emoji.md --out /tmp/kappan-out
+./build/dev/kappan build --source tests/fixtures/site-ja --out /tmp/kappan-out
 ```

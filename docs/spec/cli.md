@@ -1,6 +1,6 @@
 # CLI
 
-Phase 1 時点のコマンド。`serve` と `new` は後のフェーズで足す。
+`serve` と `new` は後のフェーズで足す。
 
 ## 共通
 
@@ -14,20 +14,18 @@ kappan --verbose <subcommand>
 
 ## `kappan build`
 
-Markdown 1 ファイルを HTML に変換する。`site.yaml` は不要。
+サイト根ディレクトリを読み、`content/` 以下の Markdown を HTML にする。
 
 ```
-kappan build --source <file.md> --out <dir>
+kappan build --source <site-root> --out <dir>
 ```
 
-- `--source` は通常のファイルであること。ディレクトリを渡すと `ErrorCode::Cli` で終了する。
-- `--out` は出力ディレクトリ。無ければ作成する。成果物は `<dir>/<stem>.html`。
-- 入力の UTF-8 BOM は読み捨て、出力には付けない。
-- CRLF は LF に正規化してから変換する。
-- かな・漢字・絵文字・日本語ファイル名をそのまま扱う。
-
-Phase 2 以降、`--source` はサイト根ディレクトリ（`site.yaml` 必須）に変わる。ファイル直指定はエラーで使い方を示す。
+- `--source` は `site.yaml` のあるディレクトリ。ファイルを渡すと使い方を示して `ErrorCode::Cli` で終了する。
+- `site.yaml` が無い・壊れている場合は行番号付き `ErrorCode::Config`。
+- 1 ファイルの失敗で止めない。エラーを集約して最後に報告し、1 件でもあれば終了コードは非 0。
+- 出力は pretty URL（`about.md` → `about/index.html`）。本文 HTML のみ（テーマは Phase 3）。
+- 入力の UTF-8 BOM は読み捨て、出力には付けない。CRLF は LF に正規化する。
 
 ## 終了コード
 
-想定内エラー（読めないファイル、不正 UTF-8 など）はメッセージを出して非 0。メッセージは「どのファイルの、何が、どうダメか」を含む。
+想定内エラーは「どのファイルの、何が、どうダメか」を書いて非 0。
