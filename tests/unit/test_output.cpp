@@ -4,6 +4,7 @@
 #include "util/path.hpp"
 
 #include <kappan/error.hpp>
+#include <kappan/site.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -176,4 +177,52 @@ TEST_CASE("copy_static skips files that collide with claimed outputs") {
   REQUIRE(errors.front().code == kappan::ErrorCode::Path);
   REQUIRE_FALSE(std::filesystem::exists(out / "index.html"));
   std::filesystem::remove_all(root);
+}
+
+TEST_CASE("render_feed lists posts only with RFC 822 dates") {
+  kappan::Config config;
+  config.title = "活版ブログ";
+  config.url = "https://example.com";
+  config.language = "ja";
+  config.description = "日本語と絵文字 🐙 を含むサイト";
+
+  kappan::Document post;
+  post.permalink = "/posts/こんにちは/";
+  post.front_matter.title = "こんにちは";
+  post.front_matter.date = std::chrono::sys_days{std::chrono::year{2026} / 1 / 1};
+  post.body_html = "<p>最初の記事です。</p>\n";
+
+  kappan::Document page;
+  page.permalink = "/about/";
+  page.front_matter.title = "概要";
+  page.body_html = "<p>概要</p>\n";
+
+  kappan::Document draft;
+  draft.permalink = "/posts/下書き/";
+  draft.front_matter.title = "下書き";
+  draft.front_matter.draft = true;
+  draft.front_matter.date = std::chrono::sys_days{std::chrono::year{2026} / 1 / 2};
+
+  auto site = kappan::site::build(config, {post, page, draft}, kappan::DraftPolicy::Exclude);
+  const auto xml = kappan::output::render_feed(site);
+  REQUIRE(xml.find("<rss version=\"2.0\">") != std::string::npos);
+  REQUIRE(xml.find("<link>https://example.com/</link>") != std::string::npos);
+  REQUIRE(xml.find("日本語と絵文字 🐙 を含むサイト") != std::string::npos);
+  REQUIRE(xml.find("<title>こんにちは</title>") != std::string::npos);
+  REQUIRE(xml.find("<guid isPermaLink=\"true\">https://example.com/posts/こんにちは/</guid>") !=
+          std::string::npos);
+  REQUIRE(xml.find("Thu, 01 Jan 2026 00:00:00 +0000") != std::string::npos);
+  REQUIRE(xml.find("&lt;p&gt;最初の記事です。&lt;/p&gt;") != std::string::npos);
+  REQUIRE(xml.find("概要") == std::string::npos);
+  REQUIRE(xml.find("下書き") == std::string::npos);
+}
+
+TEST_CASE("render_feed uses title when site description is empty") {
+  kappan::Config config;
+  config.title = "タイトルだけ";
+  config.url = "https://example.com";
+  auto site = kappan::site::build(config, {}, kappan::DraftPolicy::Exclude);
+  const auto xml = kappan::output::render_feed(site);
+  REQUIRE(xml.find("<description>タイトルだけ</description>") != std::string::npos);
+  REQUIRE(xml.find("<item>") == std::string::npos);
 }

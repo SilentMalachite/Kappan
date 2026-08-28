@@ -1,5 +1,7 @@
 #pragma once
 
+#include <kappan/site.hpp>
+
 #include <chrono>
 #include <optional>
 #include <string>
@@ -18,5 +20,7 @@ struct SitemapUrl {
 [[nodiscard]] std::string join_url(std::string_view base_url, std::string_view permalink);
 
 [[nodiscard]] std::string render_sitemap(std::string_view base_url, std::vector<SitemapUrl> urls);
+
+[[nodiscard]] std::string render_feed(const Site &site);
 
 } // namespace kappan::output
