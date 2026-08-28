@@ -33,9 +33,9 @@ std::vector<std::filesystem::path> list_files(const std::filesystem::path &root)
 
 } // namespace
 
-TEST_CASE("golden single-post matches examples/blog") {
+TEST_CASE("golden blog-ja matches examples/blog") {
   const auto source = repo_root() / "examples" / "blog";
-  const auto expected = std::filesystem::path(__FILE__).parent_path() / "single-post" / "expected";
+  const auto expected = std::filesystem::path(__FILE__).parent_path() / "blog-ja" / "expected";
   const auto out = std::filesystem::temp_directory_path() / "kappan-golden-single-post";
   std::filesystem::remove_all(out);
 

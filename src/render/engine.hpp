@@ -3,10 +3,12 @@
 #include <kappan/config.hpp>
 #include <kappan/document.hpp>
 #include <kappan/error.hpp>
+#include <kappan/site.hpp>
 
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace kappan::render {
 
@@ -26,7 +28,11 @@ public:
 
   [[nodiscard]] static Result<Engine> load(const Config &config);
 
-  [[nodiscard]] Result<RenderedPage> render(const Document &document) const;
+  [[nodiscard]] Result<RenderedPage> render(const Site &site, const Document &document) const;
+
+  [[nodiscard]] Result<RenderedPage> render_listing(const Site &site, int page_number) const;
+
+  [[nodiscard]] Result<RenderedPage> render_tag(const Site &site, std::string_view tag_slug) const;
 
 private:
   struct Impl;

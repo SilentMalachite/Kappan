@@ -1,5 +1,6 @@
 #include <kappan/config.hpp>
 #include <kappan/error.hpp>
+#include <kappan/site.hpp>
 
 #include "content/parse.hpp"
 #include "render/engine.hpp"
@@ -39,7 +40,8 @@ TEST_CASE("Engine renders a Japanese post with base and post templates") {
 
   auto engine = kappan::render::Engine::load(load_ja_config());
   REQUIRE(engine);
-  const auto page = engine->render(*document);
+  auto site = kappan::site::build(load_ja_config(), {*document}, kappan::DraftPolicy::Include);
+  const auto page = engine->render(site, site.documents.front());
   REQUIRE(page);
   REQUIRE(page->output_path == document->output_path);
   REQUIRE(page->html.find("<!DOCTYPE html>") != std::string::npos);
@@ -71,7 +73,8 @@ TEST_CASE("Engine reports a missing layout template") {
   REQUIRE(document);
   auto engine = kappan::render::Engine::load(*config);
   REQUIRE(engine);
-  const auto page = engine->render(*document);
+  auto site = kappan::site::build(*config, {*document}, kappan::DraftPolicy::Include);
+  const auto page = engine->render(site, site.documents.front());
   REQUIRE_FALSE(page);
   REQUIRE(page.error().code == kappan::ErrorCode::Template);
   REQUIRE(page.error().message.find("missing.html") != std::string::npos);
@@ -102,7 +105,8 @@ TEST_CASE("Engine lets site templates override the embedded post layout") {
   REQUIRE(document);
   auto engine = kappan::render::Engine::load(*config);
   REQUIRE(engine);
-  const auto page = engine->render(*document);
+  auto site = kappan::site::build(*config, {*document}, kappan::DraftPolicy::Include);
+  const auto page = engine->render(site, site.documents.front());
   REQUIRE(page);
   REQUIRE(page->html.find("上書き 見出し") != std::string::npos);
   REQUIRE(page->html.find("<article>") == std::string::npos);

@@ -19,7 +19,6 @@ description: kappan new が作った日本語サイト
 
 constexpr std::string_view kIndexMd = R"(---
 title: ホーム
-layout: page
 ---
 # ホーム 🐙
 
@@ -63,6 +62,8 @@ Result<void> create_site(const std::filesystem::path &dir) {
       {dir / "templates" / "base.html", render::embedded::base_html},
       {dir / "templates" / "post.html", render::embedded::post_html},
       {dir / "templates" / "page.html", render::embedded::page_html},
+      {dir / "templates" / "index.html", render::embedded::index_html},
+      {dir / "templates" / "tag.html", render::embedded::tag_html},
   };
 
   for (const auto &[path, text] : files) {

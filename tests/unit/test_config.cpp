@@ -64,6 +64,31 @@ TEST_CASE("load accepts CRLF site.yaml") {
   std::filesystem::remove(path);
 }
 
+TEST_CASE("load reads pagination posts_per_page") {
+  const auto path = std::filesystem::temp_directory_path() / "kappan-site-paginate.yaml";
+  {
+    std::ofstream out(path, std::ios::binary);
+    out << "title: ページ\npagination:\n  posts_per_page: 2\n";
+  }
+  const auto result = kappan::config::load(path);
+  REQUIRE(result);
+  REQUIRE(result->posts_per_page == 2);
+  std::filesystem::remove(path);
+}
+
+TEST_CASE("load rejects a negative posts_per_page") {
+  const auto path = std::filesystem::temp_directory_path() / "kappan-site-paginate-bad.yaml";
+  {
+    std::ofstream out(path, std::ios::binary);
+    out << "title: ページ\npagination:\n  posts_per_page: -1\n";
+  }
+  const auto result = kappan::config::load(path);
+  REQUIRE_FALSE(result);
+  REQUIRE(result.error().code == kappan::ErrorCode::Config);
+  REQUIRE(result.error().line.has_value());
+  std::filesystem::remove(path);
+}
+
 TEST_CASE("load rejects a sequence title") {
   const auto path = std::filesystem::temp_directory_path() / "kappan-site-seq.yaml";
   {

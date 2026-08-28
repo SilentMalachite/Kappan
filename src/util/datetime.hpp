@@ -16,6 +16,8 @@ struct DatedStem {
 
 [[nodiscard]] std::string format_iso_datetime(std::chrono::sys_seconds tp);
 
+[[nodiscard]] std::string format_display_date(std::chrono::sys_seconds tp);
+
 [[nodiscard]] DatedStem split_dated_stem(std::string_view stem);
 
 } // namespace kappan::util

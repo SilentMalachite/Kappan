@@ -1,6 +1,7 @@
 #include "render/engine.hpp"
 
 #include "render/context.hpp"
+#include "site/paginate.hpp"
 #include "util/path.hpp"
 #include "util/utf8.hpp"
 
@@ -8,8 +9,11 @@
 
 #include <inja/inja.hpp>
 
+#include <algorithm>
 #include <format>
 #include <map>
+#include <nlohmann/json.hpp>
+#include <ranges>
 #include <string_view>
 #include <utility>
 
@@ -22,9 +26,9 @@ struct NamedTheme {
 };
 
 constexpr NamedTheme kEmbedded[] = {
-    {"base.html", embedded::base_html},
-    {"post.html", embedded::post_html},
-    {"page.html", embedded::page_html},
+    {"base.html", embedded::base_html}, {"post.html", embedded::post_html},
+    {"page.html", embedded::page_html}, {"index.html", embedded::index_html},
+    {"tag.html", embedded::tag_html},
 };
 
 [[nodiscard]] int inja_line(const inja::SourceLocation &location) {
@@ -32,6 +36,32 @@ constexpr NamedTheme kEmbedded[] = {
     return 1;
   }
   return static_cast<int>(location.line);
+}
+
+[[nodiscard]] Result<RenderedPage>
+render_named(inja::Environment &env, const std::map<std::string, inja::Template> &layouts,
+             const std::string &filename, const std::filesystem::path &output_path,
+             const nlohmann::json &data, const std::filesystem::path &where) {
+  const auto found = layouts.find(filename);
+  if (found == layouts.end()) {
+    return tl::unexpected(make_error(
+        ErrorCode::Template,
+        std::format("{}: テンプレート '{}' がありません", util::to_generic_utf8(where), filename),
+        where));
+  }
+  try {
+    RenderedPage page;
+    page.output_path = output_path;
+    page.html = env.render(found->second, data);
+    return page;
+  } catch (const inja::InjaError &ex) {
+    const int line = inja_line(ex.location);
+    return tl::unexpected(
+        make_error(ErrorCode::Template,
+                   std::format("{}:{} テンプレート '{}' を適用できません: {}",
+                               util::to_generic_utf8(where), line, filename, ex.message),
+                   where, line));
+  }
 }
 
 [[nodiscard]] Result<void> install_template(inja::Environment &env,
@@ -55,7 +85,6 @@ constexpr NamedTheme kEmbedded[] = {
 } // namespace
 
 struct Engine::Impl {
-  Config config;
   inja::Environment env;
   std::map<std::string, inja::Template> layouts;
 };
@@ -67,7 +96,6 @@ Engine::~Engine() = default;
 
 Result<Engine> Engine::load(const Config &config) {
   auto impl = std::make_unique<Impl>();
-  impl->config = config;
   impl->env.set_html_autoescape(false);
   impl->env.set_search_included_templates_in_files(false);
 
@@ -109,30 +137,38 @@ Result<Engine> Engine::load(const Config &config) {
   return Engine{std::move(impl)};
 }
 
-Result<RenderedPage> Engine::render(const Document &document) const {
-  const auto filename = document.front_matter.layout + ".html";
-  const auto found = impl_->layouts.find(filename);
-  if (found == impl_->layouts.end()) {
-    return tl::unexpected(make_error(ErrorCode::Template,
-                                     std::format("{}: テンプレート '{}' がありません",
-                                                 util::to_generic_utf8(document.source), filename),
-                                     document.source));
+Result<RenderedPage> Engine::render(const Site &site, const Document &document) const {
+  const auto pages = site::paginate(site.posts.indices, site.config.posts_per_page);
+  const site::Pagination *pagination = nullptr;
+  if (document.permalink == "/" && document.front_matter.layout == "index" && !pages.empty()) {
+    pagination = &pages.front();
   }
+  return render_named(impl_->env, impl_->layouts, document.front_matter.layout + ".html",
+                      document.output_path, make_context(site, document, pagination),
+                      document.source);
+}
 
-  try {
-    const auto data = make_context(impl_->config, document);
-    RenderedPage page;
-    page.output_path = document.output_path;
-    page.html = impl_->env.render(found->second, data);
-    return page;
-  } catch (const inja::InjaError &ex) {
-    const int line = inja_line(ex.location);
+Result<RenderedPage> Engine::render_listing(const Site &site, int page_number) const {
+  const auto pages = site::paginate(site.posts.indices, site.config.posts_per_page);
+  if (page_number < 1 || page_number > static_cast<int>(pages.size())) {
     return tl::unexpected(
-        make_error(ErrorCode::Template,
-                   std::format("{}:{} テンプレート '{}' を適用できません: {}",
-                               util::to_generic_utf8(document.source), line, filename, ex.message),
-                   document.source, line));
+        make_error(ErrorCode::Path, std::format("一覧のページ {} はありません", page_number)));
   }
+  const auto &pagination = pages[static_cast<std::size_t>(page_number) - 1];
+  return render_named(
+      impl_->env, impl_->layouts, "index.html", util::output_from_permalink(pagination.permalink),
+      make_listing_context(site, pagination), site.config.source_root / "index.html");
+}
+
+Result<RenderedPage> Engine::render_tag(const Site &site, std::string_view tag_slug) const {
+  const auto found = std::ranges::find(site.tags.terms, tag_slug, &TaxonomyTerm::slug);
+  if (found == site.tags.terms.end()) {
+    return tl::unexpected(
+        make_error(ErrorCode::Path, std::format("タグ '{}' がありません", tag_slug)));
+  }
+  return render_named(impl_->env, impl_->layouts, "tag.html",
+                      util::output_from_permalink(found->permalink), make_tag_context(site, *found),
+                      site.config.source_root / "tags.html");
 }
 
 } // namespace kappan::render

@@ -12,6 +12,7 @@ struct Config {
   std::string url;
   std::string language{"ja"};
   std::string description;
+  int posts_per_page = 10;
   std::filesystem::path source_root;
   std::filesystem::path content_dir;
 };

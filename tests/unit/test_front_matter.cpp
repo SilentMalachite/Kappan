@@ -110,6 +110,7 @@ TEST_CASE("parse_document maps index.md to the site root") {
   const auto result = kappan::content::parse_document(source, test_config(root));
   REQUIRE(result);
   REQUIRE(result->permalink == "/");
+  REQUIRE(result->front_matter.layout == "index");
   REQUIRE(result->output_path == std::filesystem::path{"index.html"});
 }
 

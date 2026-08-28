@@ -1,6 +1,7 @@
 #pragma once
 
 #include <kappan/error.hpp>
+#include <kappan/site.hpp>
 
 #include <filesystem>
 #include <vector>
@@ -15,6 +16,7 @@ struct BuildResult {
 };
 
 [[nodiscard]] BuildResult build_site(const std::filesystem::path &source,
-                                     const std::filesystem::path &out_dir);
+                                     const std::filesystem::path &out_dir,
+                                     DraftPolicy drafts = DraftPolicy::Exclude);
 
 } // namespace kappan::content

@@ -12,4 +12,6 @@ namespace kappan::util {
 
 [[nodiscard]] std::string to_generic_utf8(const std::filesystem::path &path);
 
+[[nodiscard]] std::filesystem::path output_from_permalink(std::string_view permalink);
+
 } // namespace kappan::util

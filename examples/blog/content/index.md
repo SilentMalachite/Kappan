@@ -1,6 +1,5 @@
 ---
 title: ホーム
-layout: page
 ---
 # ホーム 🐙
 

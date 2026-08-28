@@ -233,7 +233,13 @@ void apply_source_defaults(FrontMatter &fm, const std::filesystem::path &relativ
     fm.title = dated.stem;
   }
   if (fm.layout.empty()) {
-    fm.layout = is_post(relative) ? "post" : "page";
+    if (is_home_page(relative)) {
+      fm.layout = "index";
+    } else if (is_post(relative)) {
+      fm.layout = "post";
+    } else {
+      fm.layout = "page";
+    }
   }
   if (!fm.date) {
     fm.date = dated.date;
@@ -249,27 +255,6 @@ void apply_source_defaults(FrontMatter &fm, const std::filesystem::path &relativ
   } else {
     fm.slug = util::slugify(fm.slug);
   }
-}
-
-[[nodiscard]] std::filesystem::path output_from_permalink(std::string_view permalink) {
-  if (permalink == "/") {
-    return std::filesystem::path{"index.html"};
-  }
-  if (permalink.starts_with('/')) {
-    permalink.remove_prefix(1);
-  }
-  if (permalink.ends_with('/')) {
-    permalink.remove_suffix(1);
-  }
-  std::filesystem::path out;
-  std::size_t start = 0;
-  for (std::size_t i = 0; i <= permalink.size(); ++i) {
-    if (i == permalink.size() || permalink[i] == '/') {
-      out /= util::from_utf8(permalink.substr(start, i - start));
-      start = i + 1;
-    }
-  }
-  return out / "index.html";
 }
 
 } // namespace
@@ -307,7 +292,7 @@ Result<Document> parse_document(const std::filesystem::path &source, const Confi
   } else {
     document.permalink = std::format("/{}/", document.front_matter.slug);
   }
-  document.output_path = output_from_permalink(document.permalink);
+  document.output_path = util::output_from_permalink(document.permalink);
 
   auto html = markdown::to_html(split->body, source);
   if (!html) {

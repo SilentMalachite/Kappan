@@ -6,7 +6,7 @@ get_filename_component(output_dir "${OUTPUT}" DIRECTORY)
 file(MAKE_DIRECTORY "${output_dir}")
 
 set(header "#pragma once\n\n#include <string_view>\n\nnamespace kappan::render::embedded {\n\n")
-foreach(name IN ITEMS base post page)
+foreach(name IN ITEMS base post page index tag)
   file(READ "${INPUT_DIR}/${name}.html" content)
   string(APPEND header "inline constexpr std::string_view ${name}_html = R\"kappan(${content})kappan\";\n\n")
 endforeach()

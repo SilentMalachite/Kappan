@@ -4,8 +4,15 @@
 <article>
   <h1>{{ page.title }}</h1>
   {% if page.date %}
-  <time datetime="{{ page.date }}">{{ page.date }}</time>
+  <time datetime="{{ page.date }}">{{ page.date_display }}</time>
   {% endif %}
   {{ page.content }}
+  {% if page.tags %}
+  <ul>
+    {% for tag in page.tags %}
+    <li><a href="{{ tag.permalink }}">{{ tag.name }}</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
 </article>
 {% endblock %}

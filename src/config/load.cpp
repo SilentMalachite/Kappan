@@ -108,6 +108,48 @@ Result<Config> load(const std::filesystem::path &site_yaml) {
   config.url = std::move(*url);
   config.language = std::move(*language);
   config.description = std::move(*description);
+
+  const auto pagination = (*root)["pagination"];
+  if (pagination && pagination.IsDefined()) {
+    if (!pagination.IsMap()) {
+      const int line = file_line(pagination.Mark());
+      return tl::unexpected(
+          make_error(ErrorCode::Config,
+                     std::format("{}:{} キー 'pagination' はマップである必要があります",
+                                 util::to_generic_utf8(site_yaml), line),
+                     site_yaml, line));
+    }
+    const auto per_page = pagination["posts_per_page"];
+    if (per_page && per_page.IsDefined()) {
+      if (!per_page.IsScalar()) {
+        const int line = file_line(per_page.Mark());
+        return tl::unexpected(make_error(
+            ErrorCode::Config,
+            std::format("{}:{} キー 'pagination.posts_per_page' は整数である必要があります",
+                        util::to_generic_utf8(site_yaml), line),
+            site_yaml, line));
+      }
+      try {
+        config.posts_per_page = per_page.as<int>();
+      } catch (const YAML::Exception &) {
+        const int line = file_line(per_page.Mark());
+        return tl::unexpected(make_error(
+            ErrorCode::Config,
+            std::format("{}:{} キー 'pagination.posts_per_page' は整数である必要があります",
+                        util::to_generic_utf8(site_yaml), line),
+            site_yaml, line));
+      }
+      if (config.posts_per_page < 0) {
+        const int line = file_line(per_page.Mark());
+        return tl::unexpected(make_error(
+            ErrorCode::Config,
+            std::format("{}:{} キー 'pagination.posts_per_page' は 0 以上である必要があります",
+                        util::to_generic_utf8(site_yaml), line),
+            site_yaml, line));
+      }
+    }
+  }
+
   config.source_root = site_yaml.parent_path();
   config.content_dir = config.source_root / "content";
   return config;

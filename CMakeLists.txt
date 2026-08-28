@@ -26,6 +26,8 @@ set_property(
            ${KAPPAN_THEME_DIR}/base.html
            ${KAPPAN_THEME_DIR}/post.html
            ${KAPPAN_THEME_DIR}/page.html
+           ${KAPPAN_THEME_DIR}/index.html
+           ${KAPPAN_THEME_DIR}/tag.html
            ${CMAKE_SOURCE_DIR}/cmake/embed_theme.cmake)
 execute_process(
   COMMAND ${CMAKE_COMMAND} -DINPUT_DIR=${KAPPAN_THEME_DIR} -DOUTPUT=${KAPPAN_EMBEDDED_THEME} -P
@@ -46,6 +48,8 @@ add_library(
   src/content/parse.cpp
   src/content/build.cpp
   src/content/scaffold.cpp
+  src/site/build.cpp
+  src/site/paginate.cpp
   src/render/escape.cpp
   src/render/context.cpp
   src/render/engine.cpp)

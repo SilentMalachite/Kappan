@@ -23,6 +23,11 @@ TEST_CASE("format_iso_datetime prints a calendar date at midnight") {
   REQUIRE(kappan::util::format_iso_datetime(value) == "2026-01-01");
 }
 
+TEST_CASE("format_display_date prints a Japanese calendar date") {
+  const auto value = std::chrono::sys_days{std::chrono::year{2026} / 1 / 1};
+  REQUIRE(kappan::util::format_display_date(value) == "2026年1月1日");
+}
+
 TEST_CASE("format_iso_datetime prints a local datetime") {
   const auto value = std::chrono::sys_days{std::chrono::year{2026} / 1 / 1} +
                      std::chrono::hours{15} + std::chrono::minutes{4} + std::chrono::seconds{5};

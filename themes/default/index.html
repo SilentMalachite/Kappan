@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }} — {{ site.title }}{% endblock %}
+{% block content %}
+{% if page.content %}
+<article>
+  {{ page.content }}
+</article>
+{% endif %}
+{% if pagination and pagination.posts %}
+<ul>
+  {% for post in pagination.posts %}
+  <li>
+    <a href="{{ post.permalink }}">{{ post.title }}</a>
+    {% if post.date_display %}
+    <time datetime="{{ post.date }}">{{ post.date_display }}</time>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% if pagination and (pagination.prev or pagination.next) %}
+<nav>
+  {% if pagination.prev %}
+  <a href="{{ pagination.prev }}">前へ</a>
+  {% endif %}
+  {% if pagination.next %}
+  <a href="{{ pagination.next }}">次へ</a>
+  {% endif %}
+</nav>
+{% endif %}
+{% endblock %}

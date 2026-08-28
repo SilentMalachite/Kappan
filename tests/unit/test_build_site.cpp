@@ -6,6 +6,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <string>
 
@@ -29,7 +30,7 @@ TEST_CASE("build_site writes pretty URLs for a Japanese blog") {
 
   const auto result = kappan::content::build_site(source, out);
   REQUIRE(result.ok());
-  REQUIRE(result.pages_written == 3);
+  REQUIRE(result.pages_written == 5);
 
   const auto home = read_all(out / "index.html");
   REQUIRE(home.find("ホーム 🐙") != std::string::npos);
@@ -54,7 +55,7 @@ TEST_CASE("build_site keeps good pages when one front matter is broken") {
 
   const auto result = kappan::content::build_site(source, out);
   REQUIRE_FALSE(result.ok());
-  REQUIRE(result.pages_written == 1);
+  REQUIRE(result.pages_written == 2);
   REQUIRE(result.errors.size() >= 1);
   REQUIRE(result.errors.front().code == kappan::ErrorCode::FrontMatter);
   REQUIRE(std::filesystem::exists(out / "ok" / "index.html"));
@@ -115,8 +116,9 @@ TEST_CASE("build_site skips underscore directories") {
   const auto out = source / "out";
   const auto result = kappan::content::build_site(source, out);
   REQUIRE(result.ok());
-  REQUIRE(result.pages_written == 1);
+  REQUIRE(result.pages_written == 2);
   REQUIRE(std::filesystem::exists(out / kappan::util::from_utf8("見える") / "index.html"));
+  REQUIRE(std::filesystem::exists(out / "index.html"));
   REQUIRE_FALSE(std::filesystem::exists(out / kappan::util::from_utf8("秘密") / "index.html"));
   std::filesystem::remove_all(source);
 }
@@ -140,30 +142,59 @@ TEST_CASE("build_site aggregates permalink collisions") {
   const auto out = source / "out";
   const auto result = kappan::content::build_site(source, out);
   REQUIRE_FALSE(result.ok());
-  REQUIRE(result.pages_written == 1);
+  REQUIRE(result.pages_written == 2);
   REQUIRE(result.errors.front().code == kappan::ErrorCode::Path);
   REQUIRE(result.errors.front().message.find("permalink") != std::string::npos);
   REQUIRE(std::filesystem::exists(out / kappan::util::from_utf8("同じ") / "index.html"));
   std::filesystem::remove_all(source);
 }
 
-TEST_CASE("build_site writes draft pages in phase 2") {
+TEST_CASE("build_site excludes drafts unless DraftPolicy::Include") {
   const auto source = std::filesystem::temp_directory_path() / "kappan-draft-out";
   const auto content = source / "content";
   std::filesystem::create_directories(content);
   {
     std::ofstream out(source / "site.yaml", std::ios::binary);
-    out << "title: 下書き出力\n";
+    out << "title: 下書き除外\n";
   }
   {
     std::ofstream out(content / kappan::util::from_utf8("下書き.md"), std::ios::binary);
-    out << "---\ntitle: 下書き\ndraft: true\n---\nPhase 2 では出す\n";
+    out << "---\ntitle: 下書き\ndraft: true\n---\n出てはいけない\n";
+  }
+  const auto out = source / "out";
+  const auto hidden = kappan::content::build_site(source, out, kappan::DraftPolicy::Exclude);
+  REQUIRE(hidden.ok());
+  REQUIRE_FALSE(std::filesystem::exists(out / kappan::util::from_utf8("下書き") / "index.html"));
+
+  const auto shown = kappan::content::build_site(source, out, kappan::DraftPolicy::Include);
+  REQUIRE(shown.ok());
+  REQUIRE(std::filesystem::exists(out / kappan::util::from_utf8("下書き") / "index.html"));
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("build_site paginates eleven Japanese posts") {
+  const auto source = std::filesystem::temp_directory_path() / "kappan-eleven-posts";
+  const auto posts = source / "content" / "posts";
+  std::filesystem::create_directories(posts);
+  {
+    std::ofstream out(source / "site.yaml", std::ios::binary);
+    out << "title: 十一件\npagination:\n  posts_per_page: 10\n";
+  }
+  for (int i = 1; i <= 11; ++i) {
+    const auto name = std::format("2026-01-{:02}-記事{:02}.md", i, i);
+    std::ofstream out(posts / kappan::util::from_utf8(name), std::ios::binary);
+    out << std::format("---\ntitle: 記事{:02}\ndate: 2026-01-{:02}\n---\n本文\n", i, i);
   }
   const auto out = source / "out";
   const auto result = kappan::content::build_site(source, out);
   REQUIRE(result.ok());
-  REQUIRE(result.pages_written == 1);
-  const auto html = read_all(out / kappan::util::from_utf8("下書き") / "index.html");
-  REQUIRE(html.find("Phase 2 では出す") != std::string::npos);
+  REQUIRE(std::filesystem::exists(out / "index.html"));
+  REQUIRE(std::filesystem::exists(out / "page" / "2" / "index.html"));
+  const auto home = read_all(out / "index.html");
+  REQUIRE(home.find("記事11") != std::string::npos);
+  REQUIRE(home.find("次へ") != std::string::npos);
+  const auto page2 = read_all(out / "page" / "2" / "index.html");
+  REQUIRE(page2.find("記事01") != std::string::npos);
+  REQUIRE(page2.find("前へ") != std::string::npos);
   std::filesystem::remove_all(source);
 }

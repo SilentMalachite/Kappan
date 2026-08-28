@@ -2,3 +2,5 @@ title: 活版ブログ
 url: https://example.com
 language: ja
 description: 日本語と絵文字 🐙 を含むサイト
+pagination:
+  posts_per_page: 2

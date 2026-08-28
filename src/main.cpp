@@ -4,6 +4,8 @@
 #include "content/scaffold.hpp"
 #include "util/path.hpp"
 
+#include <kappan/site.hpp>
+
 #include <CLI/CLI.hpp>
 #include <spdlog/spdlog.h>
 
@@ -25,6 +27,8 @@ int main(int argc, char **argv) {
     auto *build = app.add_subcommand("build", "サイトを HTML に変換する");
     build->add_option("--source", source, "サイト根ディレクトリ（site.yaml）")->required();
     build->add_option("--out", out, "出力ディレクトリ")->required();
+    bool include_drafts = false;
+    build->add_flag("--drafts", include_drafts, "下書きを含める");
 
     std::filesystem::path new_dir;
     auto *new_cmd = app.add_subcommand("new", "サイトの骨格を作る");
@@ -35,7 +39,9 @@ int main(int argc, char **argv) {
       spdlog::set_level(spdlog::level::debug);
     }
     if (build->parsed()) {
-      const auto result = kappan::content::build_site(source, out);
+      const auto drafts =
+          include_drafts ? kappan::DraftPolicy::Include : kappan::DraftPolicy::Exclude;
+      const auto result = kappan::content::build_site(source, out, drafts);
       for (const auto &error : result.errors) {
         spdlog::error("{}", error.message);
       }

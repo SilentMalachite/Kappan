@@ -33,7 +33,7 @@ TEST_CASE("create_site writes a Japanese sample that builds") {
   const auto out = dir / "out";
   const auto result = kappan::content::build_site(dir, out);
   REQUIRE(result.ok());
-  REQUIRE(result.pages_written == 2);
+  REQUIRE(result.pages_written == 3);
   const auto post = read_all(out / kappan::util::from_utf8("posts") /
                              kappan::util::from_utf8("こんにちは") / "index.html");
   REQUIRE(post.find("<html lang=\"ja\">") != std::string::npos);
