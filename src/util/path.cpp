@@ -28,4 +28,8 @@ std::filesystem::path from_utf8(std::string_view utf8) {
 
 std::string to_utf8(const std::filesystem::path &path) { return from_u8string(path.u8string()); }
 
+std::string to_generic_utf8(const std::filesystem::path &path) {
+  return from_u8string(path.generic_u8string());
+}
+
 } // namespace kappan::util

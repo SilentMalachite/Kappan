@@ -13,14 +13,21 @@ find_package(tl-expected CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(cmark-gfm CONFIG REQUIRED)
 find_package(cmark-gfm-extensions CONFIG REQUIRED)
+find_package(yaml-cpp CONFIG REQUIRED)
 
 add_library(
   kappan_lib STATIC
   src/util/version.cpp
   src/util/path.cpp
   src/util/utf8.cpp
+  src/util/slug.cpp
+  src/util/datetime.cpp
+  src/config/load.cpp
   src/markdown/cmark.cpp
-  src/content/convert.cpp)
+  src/content/convert.cpp
+  src/content/scan.cpp
+  src/content/parse.cpp
+  src/content/build.cpp)
 add_library(kappan::lib ALIAS kappan_lib)
 
 configure_file(
@@ -37,8 +44,10 @@ target_compile_features(kappan_lib PUBLIC cxx_std_20)
 
 target_compile_definitions(kappan_lib PUBLIC CMARK_GFM_STATIC_DEFINE CMARK_GFM_EXTENSIONS_STATIC_DEFINE)
 
-target_link_libraries(kappan_lib PUBLIC tl::expected spdlog::spdlog libcmark-gfm-extensions_static
-                                       libcmark-gfm_static)
+target_link_libraries(
+  kappan_lib
+  PUBLIC tl::expected spdlog::spdlog libcmark-gfm-extensions_static libcmark-gfm_static
+  PRIVATE yaml-cpp::yaml-cpp)
 
 function(kappan_set_warnings target)
   if(MSVC)

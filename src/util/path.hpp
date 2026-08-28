@@ -10,4 +10,6 @@ namespace kappan::util {
 
 [[nodiscard]] std::string to_utf8(const std::filesystem::path &path);
 
+[[nodiscard]] std::string to_generic_utf8(const std::filesystem::path &path);
+
 } // namespace kappan::util

@@ -1,6 +1,6 @@
 #include <kappan/version.hpp>
 
-#include "content/convert.hpp"
+#include "content/build.hpp"
 #include "util/path.hpp"
 
 #include <CLI/CLI.hpp>
@@ -21,8 +21,8 @@ int main(int argc, char **argv) {
 
     std::filesystem::path source;
     std::filesystem::path out;
-    auto *build = app.add_subcommand("build", "Markdown 1 ファイルを HTML に変換する");
-    build->add_option("--source", source, "入力 Markdown ファイル")->required();
+    auto *build = app.add_subcommand("build", "サイトを HTML に変換する");
+    build->add_option("--source", source, "サイト根ディレクトリ（site.yaml）")->required();
     build->add_option("--out", out, "出力ディレクトリ")->required();
 
     CLI11_PARSE(app, argc, argv);
@@ -30,13 +30,14 @@ int main(int argc, char **argv) {
       spdlog::set_level(spdlog::level::debug);
     }
     if (build->parsed()) {
-      const auto result = kappan::content::convert_markdown_file(source, out);
-      if (!result) {
-        spdlog::error("{}", result.error().message);
+      const auto result = kappan::content::build_site(source, out);
+      for (const auto &error : result.errors) {
+        spdlog::error("{}", error.message);
+      }
+      if (!result.ok()) {
         return EXIT_FAILURE;
       }
-      spdlog::debug("converted {} -> {}", kappan::util::to_utf8(source),
-                    kappan::util::to_utf8(out));
+      spdlog::debug("wrote {} pages to {}", result.pages_written, kappan::util::to_utf8(out));
     }
     return EXIT_SUCCESS;
   } catch (const std::exception &ex) {

@@ -39,6 +39,37 @@ namespace {
 
 } // namespace
 
+std::optional<char32_t> next_codepoint(std::string_view &rest) {
+  if (rest.empty()) {
+    return std::nullopt;
+  }
+  const auto *p = reinterpret_cast<const unsigned char *>(rest.data());
+  const auto n = rest.size();
+  std::size_t extra = 0;
+  std::uint32_t cp = 0;
+  if (p[0] <= 0x7F) {
+    extra = 0;
+    cp = p[0];
+  } else if (n >= 2 && (p[0] & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80) {
+    extra = 1;
+    cp = static_cast<std::uint32_t>(p[0] & 0x1F) << 6 | (p[1] & 0x3F);
+  } else if (n >= 3 && (p[0] & 0xF0) == 0xE0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80) {
+    extra = 2;
+    cp = static_cast<std::uint32_t>(p[0] & 0x0F) << 12 |
+         static_cast<std::uint32_t>(p[1] & 0x3F) << 6 | (p[2] & 0x3F);
+  } else if (n >= 4 && (p[0] & 0xF8) == 0xF0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80 &&
+             (p[3] & 0xC0) == 0x80) {
+    extra = 3;
+    cp = static_cast<std::uint32_t>(p[0] & 0x07) << 18 |
+         static_cast<std::uint32_t>(p[1] & 0x3F) << 12 |
+         static_cast<std::uint32_t>(p[2] & 0x3F) << 6 | (p[3] & 0x3F);
+  } else {
+    return std::nullopt;
+  }
+  rest.remove_prefix(extra + 1);
+  return static_cast<char32_t>(cp);
+}
+
 bool is_valid_utf8(std::string_view bytes) {
   const auto *p = reinterpret_cast<const unsigned char *>(bytes.data());
   const auto *const end = p + bytes.size();
