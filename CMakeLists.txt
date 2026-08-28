@@ -52,7 +52,8 @@ add_library(
   src/site/paginate.cpp
   src/render/escape.cpp
   src/render/context.cpp
-  src/render/engine.cpp)
+  src/render/engine.cpp
+  src/output/xml.cpp)
 add_library(kappan::lib ALIAS kappan_lib)
 
 configure_file(
