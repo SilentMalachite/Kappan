@@ -9,8 +9,18 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(KAPPAN_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
 find_package(CLI11 CONFIG REQUIRED)
+find_package(tl-expected CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+find_package(cmark-gfm CONFIG REQUIRED)
+find_package(cmark-gfm-extensions CONFIG REQUIRED)
 
-add_library(kappan_lib STATIC src/util/version.cpp)
+add_library(
+  kappan_lib STATIC
+  src/util/version.cpp
+  src/util/path.cpp
+  src/util/utf8.cpp
+  src/markdown/cmark.cpp
+  src/content/convert.cpp)
 add_library(kappan::lib ALIAS kappan_lib)
 
 configure_file(
@@ -18,13 +28,21 @@ configure_file(
   ${CMAKE_BINARY_DIR}/include/kappan/version.hpp
   @ONLY)
 
-target_include_directories(kappan_lib PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include)
+target_include_directories(
+  kappan_lib
+  PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include
+  PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 target_compile_features(kappan_lib PUBLIC cxx_std_20)
 
+target_compile_definitions(kappan_lib PUBLIC CMARK_GFM_STATIC_DEFINE CMARK_GFM_EXTENSIONS_STATIC_DEFINE)
+
+target_link_libraries(kappan_lib PUBLIC tl::expected spdlog::spdlog libcmark-gfm-extensions_static
+                                       libcmark-gfm_static)
+
 function(kappan_set_warnings target)
   if(MSVC)
-    target_compile_options(${target} PRIVATE /W4)
+    target_compile_options(${target} PRIVATE /W4 /utf-8)
     if(KAPPAN_WARNINGS_AS_ERRORS)
       target_compile_options(${target} PRIVATE /WX)
     endif()
@@ -40,6 +58,7 @@ kappan_set_warnings(kappan_lib)
 
 add_executable(kappan src/main.cpp)
 target_link_libraries(kappan PRIVATE kappan_lib CLI11::CLI11)
+target_include_directories(kappan PRIVATE ${CMAKE_SOURCE_DIR}/src)
 kappan_set_warnings(kappan)
 
 enable_testing()
