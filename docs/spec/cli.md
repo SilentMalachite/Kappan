@@ -14,7 +14,7 @@ kappan --verbose <subcommand>
 
 ## `kappan build`
 
-サイト根ディレクトリを読み、`content/` 以下の Markdown を HTML にする。
+サイト根ディレクトリを読み、`content/` 以下の Markdown を HTML にする。`static/` をコピーし、`url` があれば `sitemap.xml` と `feed.xml` を書く。
 
 ```
 kappan build --source <site-root> --out <dir> [--drafts]
@@ -26,6 +26,8 @@ kappan build --source <site-root> --out <dir> [--drafts]
 - 出力は pretty URL（`about.md` → `about/index.html`）。`layout` に対応するテンプレートで体裁を付ける。
 - `--drafts` が無いとき `draft: true` の記事は出力しない。
 - 入力の UTF-8 BOM は読み捨て、出力には付けない。CRLF は LF に正規化する。
+- 書き出し前に `--out` を空にする。`--out` がソース根と同じ、またはソースが `--out` の内側なら `ErrorCode::Cli`。
+- 詳細は [output.md](output.md)。
 
 ## `kappan new`
 
