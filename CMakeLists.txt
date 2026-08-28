@@ -54,7 +54,8 @@ add_library(
   src/render/context.cpp
   src/render/engine.cpp
   src/output/xml.cpp
-  src/output/write.cpp)
+  src/output/write.cpp
+  src/output/assets.cpp)
 add_library(kappan::lib ALIAS kappan_lib)
 
 configure_file(

@@ -1,3 +1,4 @@
+#include "output/assets.hpp"
 #include "output/write.hpp"
 #include "output/xml.hpp"
 #include "util/path.hpp"
@@ -8,6 +9,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 
 TEST_CASE("xml_escape converts XML special characters") {
   REQUIRE(kappan::output::xml_escape("A&B <c> \"'\"") == "A&amp;B &lt;c&gt; &quot;&apos;&quot;");
@@ -87,4 +89,72 @@ TEST_CASE("claim_output reports a Japanese path collision") {
   REQUIRE(errors.size() == 1);
   REQUIRE(errors.front().code == kappan::ErrorCode::Path);
   REQUIRE(errors.front().message.find("about/index.html") != std::string::npos);
+}
+
+TEST_CASE("copy_static copies Japanese filenames and raw bytes") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-static-copy";
+  std::filesystem::remove_all(root);
+  const auto static_dir = root / "static";
+  const auto out = root / "out";
+  std::filesystem::create_directories(static_dir / "images");
+  std::filesystem::create_directories(static_dir / kappan::util::from_utf8("_隠し"));
+  std::filesystem::create_directories(out);
+  {
+    std::ofstream file(static_dir / "images" / kappan::util::from_utf8("🐙.svg"), std::ios::binary);
+    file << "<svg xmlns='http://www.w3.org/2000/svg'/>";
+  }
+  {
+    std::ofstream bin(static_dir / "blob.bin", std::ios::binary);
+    const char bytes[] = {'\0', '\x01', '\xFF', '\xFE'};
+    bin.write(bytes, 4);
+  }
+  {
+    std::ofstream hidden(static_dir / kappan::util::from_utf8("_隠し") / "nope.css",
+                         std::ios::binary);
+    hidden << "body{}\n";
+  }
+  kappan::output::ClaimedOutputs claimed;
+  const auto errors = kappan::output::copy_static(static_dir, out, claimed);
+  REQUIRE(errors.empty());
+  const auto copied = out / "images" / kappan::util::from_utf8("🐙.svg");
+  REQUIRE(std::filesystem::exists(copied));
+  std::ifstream in(copied, std::ios::binary);
+  const std::string got{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+  REQUIRE(got.find("svg") != std::string::npos);
+  std::ifstream bin_in(out / "blob.bin", std::ios::binary);
+  const std::string raw{std::istreambuf_iterator<char>(bin_in), std::istreambuf_iterator<char>()};
+  REQUIRE(raw.size() == 4);
+  REQUIRE(static_cast<unsigned char>(raw[2]) == 0xFF);
+  REQUIRE_FALSE(std::filesystem::exists(out / kappan::util::from_utf8("_隠し") / "nope.css"));
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("copy_static ignores a missing directory") {
+  kappan::output::ClaimedOutputs claimed;
+  const auto errors =
+      kappan::output::copy_static(std::filesystem::temp_directory_path() / "kappan-no-static-dir",
+                                  std::filesystem::temp_directory_path(), claimed);
+  REQUIRE(errors.empty());
+}
+
+TEST_CASE("copy_static skips files that collide with claimed outputs") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-static-collide";
+  std::filesystem::remove_all(root);
+  const auto static_dir = root / "static";
+  const auto out = root / "out";
+  std::filesystem::create_directories(static_dir);
+  std::filesystem::create_directories(out);
+  {
+    std::ofstream file(static_dir / "index.html", std::ios::binary);
+    file << "static\n";
+  }
+  kappan::output::ClaimedOutputs claimed;
+  std::vector<kappan::Error> claim_errors;
+  REQUIRE(kappan::output::claim_output(claimed, "index.html", root / "content" / "index.md",
+                                       claim_errors));
+  const auto errors = kappan::output::copy_static(static_dir, out, claimed);
+  REQUIRE(errors.size() == 1);
+  REQUIRE(errors.front().code == kappan::ErrorCode::Path);
+  REQUIRE_FALSE(std::filesystem::exists(out / "index.html"));
+  std::filesystem::remove_all(root);
 }
