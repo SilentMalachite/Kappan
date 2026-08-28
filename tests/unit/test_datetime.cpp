@@ -28,6 +28,14 @@ TEST_CASE("format_display_date prints a Japanese calendar date") {
   REQUIRE(kappan::util::format_display_date(value) == "2026年1月1日");
 }
 
+TEST_CASE("format_rfc822 prints English UTC without locale") {
+  const auto midnight = std::chrono::sys_days{std::chrono::year{2026} / 1 / 1};
+  REQUIRE(kappan::util::format_rfc822(midnight) == "Thu, 01 Jan 2026 00:00:00 +0000");
+  const auto afternoon =
+      midnight + std::chrono::hours{15} + std::chrono::minutes{4} + std::chrono::seconds{5};
+  REQUIRE(kappan::util::format_rfc822(afternoon) == "Thu, 01 Jan 2026 15:04:05 +0000");
+}
+
 TEST_CASE("format_iso_datetime prints a local datetime") {
   const auto value = std::chrono::sys_days{std::chrono::year{2026} / 1 / 1} +
                      std::chrono::hours{15} + std::chrono::minutes{4} + std::chrono::seconds{5};

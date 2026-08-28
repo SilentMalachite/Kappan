@@ -93,6 +93,23 @@ std::string format_display_date(std::chrono::sys_seconds tp) {
   return std::format("{}年{}月{}日 {:02}:{:02}", year, month, day, hours.count(), minutes.count());
 }
 
+std::string format_rfc822(std::chrono::sys_seconds tp) {
+  constexpr const char *kDays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+  constexpr const char *kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  const auto day_point = std::chrono::floor<std::chrono::days>(tp);
+  const std::chrono::year_month_day ymd{day_point};
+  const std::chrono::weekday wd{day_point};
+  const auto since = tp - std::chrono::sys_seconds{day_point};
+  const auto hours = std::chrono::duration_cast<std::chrono::hours>(since);
+  const auto minutes = std::chrono::duration_cast<std::chrono::minutes>(since - hours);
+  const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(since - hours - minutes);
+  return std::format("{}, {:02} {} {:04} {:02}:{:02}:{:02} +0000", kDays[wd.c_encoding()],
+                     static_cast<unsigned>(ymd.day()),
+                     kMonths[static_cast<unsigned>(ymd.month()) - 1], static_cast<int>(ymd.year()),
+                     hours.count(), minutes.count(), seconds.count());
+}
+
 DatedStem split_dated_stem(std::string_view stem) {
   DatedStem result;
   result.stem = std::string{stem};
