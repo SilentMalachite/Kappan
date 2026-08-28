@@ -41,4 +41,8 @@ cmake --build --preset release
 ./build/dev/kappan new my-site
 ```
 
-`build` / `serve` / `new` は実装フェーズに従って順に足します。いま動くのは `--version` です。
+いま動くサブコマンドは `build`（Markdown 1 ファイル → HTML）です。`serve` / `new` は後のフェーズで足します。
+
+```bash
+./build/dev/kappan build --source tests/fixtures/ja_emoji.md --out /tmp/kappan-out
+```
