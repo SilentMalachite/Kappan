@@ -17,15 +17,28 @@ inja に渡す JSON のルート:
   "page": {
     "title": "...",
     "date": "2026-01-01",
+    "date_display": "2026年1月1日",
     "permalink": "/posts/hello/",
     "content": "<p>...</p>",
-    "tags": ["日本語"],
+    "tags": [{ "name": "日本語", "slug": "日本語", "permalink": "/tags/日本語/" }],
     "layout": "post",
     "description": "..."
-  }
+  },
+  "collections": {
+    "posts": [{ "title": "...", "permalink": "/posts/hello/", "date": "2026-01-01" }],
+    "pages": [{ "title": "概要", "permalink": "/about/" }]
+  },
+  "pagination": {
+    "page": 1,
+    "pages": 2,
+    "prev": null,
+    "next": "/page/2/",
+    "posts": []
+  },
+  "tag": { "name": "日本語", "slug": "日本語", "permalink": "/tags/日本語/" }
 }
 ```
 
-`page.content` は本文 HTML で、エスケープしない。`title` など本文以外はエンジンが HTML エスケープする。自動エスケープはオフ。
+`page.content` は本文 HTML で、エスケープしない。`title` など本文以外はエンジンが HTML エスケープする。自動エスケープはオフ。`pagination` は一覧とタグページに載せる。`tag` はタグページだけ。
 
-Phase 3 の同梱ファイルは `base.html` / `post.html` / `page.html`。`landing.html` は Phase 7。
+同梱ファイルは `base.html` / `post.html` / `page.html` / `index.html` / `tag.html`。`landing.html` は Phase 7。

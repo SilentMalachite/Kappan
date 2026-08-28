@@ -8,7 +8,7 @@
 | `date` | string | ファイル名の `YYYY-MM-DD-`。無ければ空。ISO 8601 日付または `YYYY-MM-DDTHH:MM:SS` |
 | `layout` | string | `content/posts/` 配下なら `post`、それ以外は `page` |
 | `slug` | string | stem（日付プレフィックス除去）→ だめなら title から `slugify` |
-| `draft` | bool | `false`（Phase 2 では出力する。除外は Phase 4） |
+| `draft` | bool | `false`（既定では出力しない。`build --drafts` で含める） |
 | `tags` | string[] | 空 |
 | `description` | string | `""` |
 

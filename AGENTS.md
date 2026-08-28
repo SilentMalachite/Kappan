@@ -77,7 +77,7 @@ kappan/
 │   ├── unit/
 │   ├── golden/         # 入力サイト → 期待 HTML の比較
 │   └── fixtures/       # 日本語・絵文字を含むこと（必須）
-├── themes/default/     # 同梱テーマ（base.html / post.html / page.html / landing.html）
+├── themes/default/     # 同梱テーマ（base.html / post.html / page.html / index.html / tag.html / landing.html）
 └── examples/
     ├── blog/
     └── landing/
@@ -109,7 +109,7 @@ Config読込 → 走査 → 解析 → Siteモデル構築 → レンダリン�
 ### 中心となる型
 - `Config` — サイト設定。不変。構築時に検証を完了させる。
 - `Document` — 1 ソースファイル。front matter（`FrontMatter`）+ 本文 HTML + 出力先パス。
-- `Collection` — 同種の `Document` の集合（`posts`, `pages`, LP のセクションなど）。
+- `Collection` — 同種の `Document` の集合（`posts`, `pages`）。
 - `Site` — `Config` + 全 `Collection` + タクソノミ。テンプレートに渡す唯一のルート。
 
 ### ブログと LP の統一

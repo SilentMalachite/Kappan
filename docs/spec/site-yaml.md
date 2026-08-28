@@ -15,6 +15,7 @@ description: 日本語と絵文字 🐙 を含むサイト
 | `url` | string | `""` | |
 | `language` | string | `ja` | |
 | `description` | string | `""` | |
+| `pagination.posts_per_page` | int | `10` | `0` は全件 1 ページ。負は行番号付き `ErrorCode::Config` |
 
 未知キーは無視する。型不正は「どのキーが、どうダメか」を日本語で書く。行番号は yaml-cpp の `Mark`（0 始まり）に 1 を足す。
 
