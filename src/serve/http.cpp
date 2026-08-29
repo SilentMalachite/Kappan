@@ -4,9 +4,15 @@
 #include "util/path.hpp"
 #include "util/utf8.hpp"
 
+#include <httplib.h>
+
+#include <atomic>
+#include <cstdint>
+#include <exception>
 #include <format>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -310,6 +316,188 @@ Result<ResolvedRequest> resolve_request_path(const std::filesystem::path &root,
                            .location = make_redirect_location(parsed->decoded)};
   }
   return ResolvedRequest{.kind = ResolveKind::NotFound};
+}
+
+namespace {
+
+constexpr std::string_view kHtmlType = "text/html; charset=utf-8";
+constexpr std::string_view kPage400 =
+    "<!DOCTYPE html><title>400</title><p>リクエストが正しくありません</p>";
+constexpr std::string_view kPage404 =
+    "<!DOCTYPE html><title>404</title><p>ページが見つかりません</p>";
+constexpr std::string_view kPage405 =
+    "<!DOCTYPE html><title>405</title><p>このメソッドは使えません</p>";
+constexpr std::string_view kPage500 = "<!DOCTYPE html><title>500</title><p>配信できません</p>";
+
+void send_html(httplib::Response &res, int status, std::string_view body) {
+  res.status = status;
+  res.set_content(body.data(), body.size(), std::string{kHtmlType});
+}
+
+void send_file_body(httplib::Response &res, const ByteBuffer &bytes, const std::string &type) {
+  res.status = httplib::StatusCode::OK_200;
+  res.set_header("Cache-Control", "no-cache");
+  if (bytes.empty()) {
+    res.set_content(std::string{}, type);
+    return;
+  }
+  const auto *ptr = reinterpret_cast<const char *>(bytes.data());
+  if (type.starts_with("text/html")) {
+    res.set_content(std::string(ptr, bytes.size()), type);
+    return;
+  }
+  res.set_content(ptr, bytes.size(), type);
+}
+
+void handle_get(GenerationStore &store, const httplib::Request &req, httplib::Response &res) {
+  auto lease = store.acquire_read();
+  if (!lease) {
+    send_html(res, httplib::StatusCode::InternalServerError_500, kPage500);
+    return;
+  }
+  // req.path is already decoded; a second decode would turn %252e into Path/400.
+  auto resolved = resolve_request_path(lease->root(), req.target);
+  if (!resolved) {
+    send_html(res, httplib::StatusCode::BadRequest_400, kPage400);
+    return;
+  }
+  if (resolved->kind == ResolveKind::NotFound) {
+    send_html(res, httplib::StatusCode::NotFound_404, kPage404);
+    return;
+  }
+  if (resolved->kind == ResolveKind::Redirect) {
+    res.set_redirect(resolved->location, httplib::StatusCode::MovedPermanently_301);
+    res.set_header("Cache-Control", "no-cache");
+    return;
+  }
+  auto bytes = lease->read_bytes(resolved->file);
+  if (!bytes) {
+    send_html(res, httplib::StatusCode::InternalServerError_500, kPage500);
+    return;
+  }
+  send_file_body(res, *bytes, content_type_for(resolved->file));
+}
+
+[[nodiscard]] Error bind_error(const HttpServerOptions &options) {
+  return make_error(ErrorCode::Io,
+                    std::format("{}:{}: 待ち受けできません", options.host, options.port));
+}
+
+[[nodiscard]] Result<std::uint16_t> bind_port(httplib::Server &svr,
+                                              const HttpServerOptions &options) {
+  if (options.port == 0) {
+    const int bound = svr.bind_to_any_port(options.host);
+    if (bound <= 0 || bound > 65535) {
+      return tl::unexpected(bind_error(options));
+    }
+    return static_cast<std::uint16_t>(bound);
+  }
+  if (!svr.bind_to_port(options.host, static_cast<int>(options.port))) {
+    return tl::unexpected(bind_error(options));
+  }
+  return options.port;
+}
+
+void install_handlers(httplib::Server &svr, GenerationStore &store) {
+  svr.set_pre_routing_handler([](const httplib::Request &req, httplib::Response &res) {
+    if (req.method == "GET" || req.method == "HEAD") {
+      return httplib::Server::HandlerResponse::Unhandled;
+    }
+    res.set_header("Allow", "GET, HEAD");
+    send_html(res, httplib::StatusCode::MethodNotAllowed_405, kPage405);
+    return httplib::Server::HandlerResponse::Handled;
+  });
+  svr.set_exception_handler(
+      [](const httplib::Request &, httplib::Response &res, std::exception_ptr) {
+        send_html(res, httplib::StatusCode::InternalServerError_500, kPage500);
+      });
+  svr.Get(R"(.*)", [&store](const httplib::Request &req, httplib::Response &res) {
+    handle_get(store, req, res);
+  });
+}
+
+} // namespace
+
+struct HttpServer::Impl {
+  httplib::Server svr;
+  std::thread listen_thread;
+  std::atomic<bool> listen_ok{true};
+  std::uint16_t port = 0;
+};
+
+HttpServer::HttpServer(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
+HttpServer::HttpServer(HttpServer &&) noexcept = default;
+
+HttpServer &HttpServer::operator=(HttpServer &&other) noexcept {
+  if (this == &other) {
+    return *this;
+  }
+  request_stop();
+  if (impl_ && impl_->listen_thread.joinable()) {
+    impl_->listen_thread.join();
+  }
+  impl_ = std::move(other.impl_);
+  return *this;
+}
+
+HttpServer::~HttpServer() {
+  request_stop();
+  if (impl_ && impl_->listen_thread.joinable()) {
+    impl_->listen_thread.join();
+  }
+}
+
+Result<HttpServer> HttpServer::start(GenerationStore &store, const HttpServerOptions &options) {
+  auto impl = std::make_unique<Impl>();
+  impl->svr.set_idle_interval(0, 50000);
+  install_handlers(impl->svr, store);
+
+  auto bound = bind_port(impl->svr, options);
+  if (!bound) {
+    return tl::unexpected(bound.error());
+  }
+  impl->port = *bound;
+
+  auto *svr = &impl->svr;
+  auto *listen_ok = &impl->listen_ok;
+  impl->listen_thread = std::thread([svr, listen_ok]() {
+    try {
+      listen_ok->store(svr->listen_after_bind());
+    } catch (...) {
+      listen_ok->store(false);
+      svr->stop();
+    }
+  });
+
+  svr->wait_until_ready();
+  if (!svr->is_running()) {
+    svr->stop();
+    if (impl->listen_thread.joinable()) {
+      impl->listen_thread.join();
+    }
+    return tl::unexpected(bind_error(options));
+  }
+  return HttpServer{std::move(impl)};
+}
+
+std::uint16_t HttpServer::port() const { return impl_ ? impl_->port : std::uint16_t{0}; }
+
+bool HttpServer::running() const { return impl_ && impl_->svr.is_running(); }
+
+void HttpServer::request_stop() {
+  if (impl_) {
+    impl_->svr.stop();
+  }
+}
+
+Result<void> HttpServer::wait() {
+  if (impl_ && impl_->listen_thread.joinable()) {
+    impl_->listen_thread.join();
+  }
+  if (impl_ && !impl_->listen_ok.load()) {
+    return tl::unexpected(make_error(ErrorCode::Io, "HTTP サーバーの待ち受けが失敗しました"));
+  }
+  return {};
 }
 
 } // namespace kappan::serve
