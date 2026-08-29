@@ -321,6 +321,9 @@ Result<ResolvedRequest> resolve_request_path(const std::filesystem::path &root,
 namespace {
 
 constexpr std::string_view kHtmlType = "text/html; charset=utf-8";
+constexpr std::string_view kPlainType = "text/plain; charset=utf-8";
+constexpr std::string_view kReloadPath = "/__kappan/reload";
+constexpr std::string_view kBodyClose = "</body>";
 constexpr std::string_view kPage400 =
     "<!DOCTYPE html><title>400</title><p>リクエストが正しくありません</p>";
 constexpr std::string_view kPage404 =
@@ -328,6 +331,52 @@ constexpr std::string_view kPage404 =
 constexpr std::string_view kPage405 =
     "<!DOCTYPE html><title>405</title><p>このメソッドは使えません</p>";
 constexpr std::string_view kPage500 = "<!DOCTYPE html><title>500</title><p>配信できません</p>";
+
+[[nodiscard]] bool is_reload_target(std::string_view raw_target) {
+  const auto query = raw_target.find('?');
+  const auto path_part = query == std::string_view::npos ? raw_target : raw_target.substr(0, query);
+  auto decoded = percent_decode(path_part);
+  if (!decoded) {
+    return false;
+  }
+  return *decoded == kReloadPath;
+}
+
+[[nodiscard]] std::string make_reload_script(std::uint64_t generation) {
+  return std::string{"<script>(function(){var g=\""} + std::format("{}", generation) +
+         "\";setInterval(function(){"
+         "fetch('/__kappan/reload', {cache: 'no-store'})"
+         ".then(function(r){return r.ok?r.text():Promise.reject();})"
+         ".then(function(t){if(/^[0-9]+$/.test(t)&&t!==g)location.reload();})"
+         ".catch(function(){});},250);})();</script>";
+}
+
+[[nodiscard]] std::string inject_reload_script(std::string html, std::uint64_t generation) {
+  const auto script = make_reload_script(generation);
+  const auto pos = html.rfind(kBodyClose);
+  if (pos == std::string::npos) {
+    html.append(script);
+    return html;
+  }
+  html.insert(pos, script);
+  return html;
+}
+
+void maybe_inject_reload(httplib::Response &res, std::uint64_t generation) {
+  if (res.status != httplib::StatusCode::OK_200) {
+    return;
+  }
+  if (!res.get_header_value("Content-Type").starts_with("text/html")) {
+    return;
+  }
+  res.body = inject_reload_script(std::move(res.body), generation);
+}
+
+void handle_reload(GenerationStore &store, httplib::Response &res) {
+  res.status = httplib::StatusCode::OK_200;
+  res.set_header("Cache-Control", "no-store");
+  res.set_content(std::format("{}", store.generation()), std::string{kPlainType});
+}
 
 void send_html(httplib::Response &res, int status, std::string_view body) {
   res.status = status;
@@ -349,7 +398,8 @@ void send_file_body(httplib::Response &res, const ByteBuffer &bytes, const std::
   res.set_content(ptr, bytes.size(), type);
 }
 
-void handle_get(GenerationStore &store, const httplib::Request &req, httplib::Response &res) {
+void handle_get(GenerationStore &store, const httplib::Request &req, httplib::Response &res,
+                bool inject_reload) {
   auto lease = store.acquire_read();
   if (!lease) {
     send_html(res, httplib::StatusCode::InternalServerError_500, kPage500);
@@ -376,6 +426,9 @@ void handle_get(GenerationStore &store, const httplib::Request &req, httplib::Re
     return;
   }
   send_file_body(res, *bytes, content_type_for(resolved->file));
+  if (inject_reload) {
+    maybe_inject_reload(res, lease->generation());
+  }
 }
 
 [[nodiscard]] Error bind_error(const HttpServerOptions &options) {
@@ -398,12 +451,17 @@ void handle_get(GenerationStore &store, const httplib::Request &req, httplib::Re
   return options.port;
 }
 
-void install_handlers(httplib::Server &svr, GenerationStore &store) {
+void install_handlers(httplib::Server &svr, GenerationStore &store, bool inject_reload) {
   // Serve GET/HEAD here so long decoded paths are not limited by
   // CPPHTTPLIB_REGEX_ROUTE_PATH_MAX_LENGTH on RegexMatcher routes.
-  svr.set_pre_routing_handler([&store](const httplib::Request &req, httplib::Response &res) {
+  svr.set_pre_routing_handler([&store, inject_reload](const httplib::Request &req,
+                                                      httplib::Response &res) {
     if (req.method == "GET" || req.method == "HEAD") {
-      handle_get(store, req, res);
+      if (inject_reload && is_reload_target(req.target)) {
+        handle_reload(store, res);
+        return httplib::Server::HandlerResponse::Handled;
+      }
+      handle_get(store, req, res, inject_reload);
       return httplib::Server::HandlerResponse::Handled;
     }
     res.set_header("Allow", "GET, HEAD");
@@ -450,7 +508,7 @@ HttpServer::~HttpServer() {
 Result<HttpServer> HttpServer::start(GenerationStore &store, const HttpServerOptions &options) {
   auto impl = std::make_unique<Impl>();
   impl->svr.set_idle_interval(0, 50000);
-  install_handlers(impl->svr, store);
+  install_handlers(impl->svr, store, options.inject_reload);
 
   auto bound = bind_port(impl->svr, options);
   if (!bound) {

@@ -105,6 +105,31 @@ struct TempRoot {
   return kappan::util::to_generic_utf8(resolved.file);
 }
 
+[[nodiscard]] std::string generation_file_text(kappan::serve::GenerationStore &store,
+                                               const std::filesystem::path &relative) {
+  auto lease = store.acquire_read();
+  REQUIRE(lease);
+  auto bytes = lease->read_bytes(relative);
+  REQUIRE(bytes);
+  return {reinterpret_cast<const char *>(bytes->data()), bytes->size()};
+}
+
+[[nodiscard]] std::size_t count_sv(std::string_view hay, std::string_view needle) {
+  std::size_t n = 0;
+  for (auto pos = hay.find(needle); pos != std::string_view::npos; pos = hay.find(needle, pos + 1)) {
+    ++n;
+  }
+  return n;
+}
+
+constexpr std::string_view kReloadIndexHtml =
+    "<html><body><p>ホーム 🐙</p><p></body></p></body></html>\n";
+constexpr std::string_view kReloadFragmentHtml = "<p>断片 日本語</p>";
+constexpr std::string_view kReloadCss = "p{color:#333}\n";
+constexpr std::string_view kReloadAboutHtml = "<html><body><p>about</p></body></html>\n";
+constexpr std::string_view kReloadDiskBody = "from-disk\n";
+constexpr std::string_view kReloadFetch = "fetch('/__kappan/reload', {cache: 'no-store'})";
+
 } // namespace
 
 TEST_CASE("resolve_request_path maps pretty URLs and Japanese files", "[serve][http]") {
@@ -401,4 +426,231 @@ TEST_CASE("HttpServer bind failure includes host and port", "[serve][http]") {
   REQUIRE(started.error().code == kappan::ErrorCode::Io);
   REQUIRE(started.error().message.find("256.256.256.256") != std::string::npos);
   REQUIRE(started.error().message.find("8080") != std::string::npos);
+}
+
+TEST_CASE("HttpServer without inject_reload leaves HTML unchanged and reload is 404",
+          "[serve][http]") {
+  const auto source = make_japanese_site();
+  auto created = kappan::serve::GenerationStore::create();
+  REQUIRE(created);
+  auto store = std::move(*created);
+  REQUIRE(store.publish({.source = source}).ok());
+  const auto disk_index = generation_file_text(store, "index.html");
+
+  auto started = kappan::serve::HttpServer::start(store, {.host = "127.0.0.1", .port = 0});
+  REQUIRE(started);
+  auto server = std::move(*started);
+
+  httplib::Client cli{"127.0.0.1", static_cast<int>(server.port())};
+  cli.set_connection_timeout(2, 0);
+  cli.set_read_timeout(2, 0);
+
+  const auto home = cli.Get("/");
+  REQUIRE(home);
+  REQUIRE(home->status == 200);
+  REQUIRE(home->body == disk_index);
+  REQUIRE(home->body.find(kReloadFetch) == std::string::npos);
+  REQUIRE(home->body.find("location.reload()") == std::string::npos);
+
+  const auto reload = cli.Get("/__kappan/reload");
+  require_not_internal_error(reload);
+  REQUIRE(reload->status == 404);
+  REQUIRE(reload->body.find(kReloadFetch) == std::string::npos);
+
+  const auto head_reload = cli.Head("/__kappan/reload");
+  REQUIRE(head_reload);
+  REQUIRE(head_reload->status == 404);
+  REQUIRE(head_reload->body.empty());
+
+  REQUIRE(generation_file_text(store, "index.html") == disk_index);
+
+  server.request_stop();
+  REQUIRE(server.wait());
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("HttpServer reload endpoint returns generation when inject_reload", "[serve][http]") {
+  const auto source = make_japanese_site();
+  auto created = kappan::serve::GenerationStore::create();
+  REQUIRE(created);
+  auto store = std::move(*created);
+  REQUIRE(store.publish({.source = source}).ok());
+  REQUIRE(store.generation() == 1);
+
+  const kappan::serve::HttpServerOptions options{
+      .host = "127.0.0.1",
+      .port = 0,
+      .inject_reload = true,
+  };
+  auto started = kappan::serve::HttpServer::start(store, options);
+  REQUIRE(started);
+  auto server = std::move(*started);
+
+  httplib::Client cli{"127.0.0.1", static_cast<int>(server.port())};
+  cli.set_connection_timeout(2, 0);
+  cli.set_read_timeout(2, 0);
+  cli.set_path_encode(false);
+
+  const auto reload = cli.Get("/__kappan/reload");
+  REQUIRE(reload);
+  REQUIRE(reload->status == 200);
+  REQUIRE(reload->body == "1");
+  REQUIRE(reload->get_header_value("Content-Type") == "text/plain; charset=utf-8");
+  REQUIRE(reload->get_header_value("Cache-Control") == "no-store");
+  REQUIRE(reload->get_header_value("Content-Length") == "1");
+
+  const auto queried = cli.Get("/__kappan/reload?v=1");
+  REQUIRE(queried);
+  REQUIRE(queried->status == 200);
+  REQUIRE(queried->body == "1");
+  REQUIRE(queried->get_header_value("Cache-Control") == "no-store");
+
+  const auto encoded = cli.Get("/__kappan%2Freload");
+  REQUIRE(encoded);
+  REQUIRE(encoded->status == 200);
+  REQUIRE(encoded->body == "1");
+
+  const auto head = cli.Head("/__kappan/reload");
+  REQUIRE(head);
+  REQUIRE(head->status == 200);
+  REQUIRE(head->get_header_value("Content-Type") == "text/plain; charset=utf-8");
+  REQUIRE(head->get_header_value("Cache-Control") == "no-store");
+  REQUIRE(head->get_header_value("Content-Length") == reload->get_header_value("Content-Length"));
+  REQUIRE(head->body.empty());
+
+  const auto posted = cli.Post("/__kappan/reload");
+  require_not_internal_error(posted);
+  REQUIRE(posted->status == 405);
+
+  REQUIRE(store.publish({.source = source}).ok());
+  REQUIRE(store.generation() == 2);
+  const auto reload2 = cli.Get("/__kappan/reload");
+  REQUIRE(reload2);
+  REQUIRE(reload2->status == 200);
+  REQUIRE(reload2->body == "2");
+  REQUIRE(reload2->get_header_value("Content-Length") == "1");
+
+  server.request_stop();
+  REQUIRE(server.wait());
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("HttpServer injects a single reload script into HTML 200 only", "[serve][http]") {
+  const auto source = unique_temp("kappan-http-reload-src");
+  std::filesystem::remove_all(source);
+  std::filesystem::create_directories(source);
+  auto builder = [](const std::filesystem::path &, const std::filesystem::path &out,
+                    kappan::DraftPolicy) {
+    write_file(out / "index.html", kReloadIndexHtml);
+    write_file(out / "fragment.html", kReloadFragmentHtml);
+    write_file(out / "style.css", kReloadCss);
+    write_file(out / "about" / "index.html", kReloadAboutHtml);
+    write_file(out / "__kappan" / "reload", kReloadDiskBody);
+    return kappan::content::BuildResult{.pages_written = 4};
+  };
+  auto created = kappan::serve::GenerationStore::create(std::move(builder));
+  REQUIRE(created);
+  auto store = std::move(*created);
+  REQUIRE(store.publish({.source = source}).ok());
+  REQUIRE(store.generation() == 1);
+  const auto disk_index = generation_file_text(store, "index.html");
+  REQUIRE(disk_index == kReloadIndexHtml);
+
+  const kappan::serve::HttpServerOptions options{
+      .host = "127.0.0.1",
+      .port = 0,
+      .inject_reload = true,
+  };
+  auto started = kappan::serve::HttpServer::start(store, options);
+  REQUIRE(started);
+  auto server = std::move(*started);
+
+  httplib::Client cli{"127.0.0.1", static_cast<int>(server.port())};
+  cli.set_connection_timeout(2, 0);
+  cli.set_read_timeout(2, 0);
+  cli.set_path_encode(false);
+
+  const auto home = cli.Get("/");
+  REQUIRE(home);
+  REQUIRE(home->status == 200);
+  REQUIRE(home->get_header_value("Content-Type").find("text/html") != std::string::npos);
+  REQUIRE(home->body.find("ホーム 🐙") != std::string::npos);
+  REQUIRE(count_sv(home->body, "<script") == 1);
+  REQUIRE(home->body.find(kReloadFetch) != std::string::npos);
+  REQUIRE(home->body.find("location.reload()") != std::string::npos);
+  REQUIRE(home->body.find("250") != std::string::npos);
+  {
+    const auto script_begin = home->body.find("<script");
+    const auto script_end = home->body.find("</script>");
+    REQUIRE(script_begin != std::string::npos);
+    REQUIRE(script_end != std::string::npos);
+    const auto script = home->body.substr(script_begin, script_end - script_begin);
+    REQUIRE(script.find('1') != std::string::npos);
+    const auto first_body = home->body.find("</body>");
+    const auto last_body = home->body.rfind("</body>");
+    REQUIRE(first_body != std::string::npos);
+    REQUIRE(last_body != first_body);
+    REQUIRE(script_begin > first_body);
+    REQUIRE(script_end < last_body);
+  }
+  REQUIRE(home->get_header_value("Content-Length") == std::to_string(home->body.size()));
+  REQUIRE(generation_file_text(store, "index.html") == disk_index);
+  REQUIRE(disk_index.find("<script") == std::string::npos);
+
+  const auto head_home = cli.Head("/");
+  REQUIRE(head_home);
+  REQUIRE(head_home->status == 200);
+  REQUIRE(head_home->get_header_value("Content-Length") ==
+          home->get_header_value("Content-Length"));
+  REQUIRE(head_home->body.empty());
+
+  const auto fragment = cli.Get("/fragment.html");
+  REQUIRE(fragment);
+  REQUIRE(fragment->status == 200);
+  REQUIRE(fragment->body.starts_with(kReloadFragmentHtml));
+  REQUIRE(fragment->body.size() > kReloadFragmentHtml.size());
+  REQUIRE(count_sv(fragment->body, "<script") == 1);
+  REQUIRE(fragment->body.find(kReloadFetch) != std::string::npos);
+  REQUIRE(fragment->body.find("</body>") == std::string::npos);
+
+  const auto css = cli.Get("/style.css");
+  REQUIRE(css);
+  REQUIRE(css->status == 200);
+  REQUIRE(css->body == kReloadCss);
+  REQUIRE(css->body.find(kReloadFetch) == std::string::npos);
+
+  const auto missing = cli.Get("/missing");
+  require_not_internal_error(missing);
+  REQUIRE(missing->status == 404);
+  REQUIRE(missing->body.find(kReloadFetch) == std::string::npos);
+  REQUIRE(missing->body.find("<script") == std::string::npos);
+
+  const auto bad = cli.Get("/%ZZ");
+  require_not_internal_error(bad);
+  REQUIRE(bad->status == 400);
+  REQUIRE(bad->body.find(kReloadFetch) == std::string::npos);
+  REQUIRE(bad->body.find("<script") == std::string::npos);
+
+  const auto posted = cli.Post("/");
+  require_not_internal_error(posted);
+  REQUIRE(posted->status == 405);
+  REQUIRE(posted->body.find(kReloadFetch) == std::string::npos);
+  REQUIRE(posted->body.find("<script") == std::string::npos);
+
+  const auto redirected = cli.Get("/about");
+  REQUIRE(redirected);
+  REQUIRE((redirected->status == 301 || redirected->status == 302));
+  REQUIRE(redirected->get_header_value("Location") == "/about/");
+  REQUIRE(redirected->body.find(kReloadFetch) == std::string::npos);
+
+  const auto endpoint = cli.Get("/__kappan/reload");
+  REQUIRE(endpoint);
+  REQUIRE(endpoint->status == 200);
+  REQUIRE(endpoint->body == "1");
+  REQUIRE(endpoint->body != kReloadDiskBody);
+  REQUIRE(endpoint->get_header_value("Content-Type") == "text/plain; charset=utf-8");
+
+  server.request_stop();
+  REQUIRE(server.wait());
+  std::filesystem::remove_all(source);
 }

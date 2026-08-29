@@ -27,6 +27,7 @@ struct ResolvedRequest {
 struct HttpServerOptions {
   std::string host = "127.0.0.1";
   std::uint16_t port = 8080;
+  bool inject_reload = false;
 };
 
 class HttpServer {
