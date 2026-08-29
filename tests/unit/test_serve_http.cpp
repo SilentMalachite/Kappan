@@ -338,6 +338,59 @@ TEST_CASE("HttpServer rejects traversal, bad encoding, marker, and POST", "[serv
   std::filesystem::remove_all(source);
 }
 
+TEST_CASE("HttpServer serves decoded paths longer than 256 bytes", "[serve][http]") {
+  // httplib RegexMatcher refuses paths longer than CPPHTTPLIB_REGEX_ROUTE_PATH_MAX_LENGTH (256).
+  // Split across segments so each filename stays within the 255-byte FS limit.
+  std::string seg1_utf8;
+  std::string seg2_utf8;
+  for (int i = 0; i < 80; ++i) {
+    seg1_utf8 += "あ";
+  }
+  for (int i = 0; i < 10; ++i) {
+    seg2_utf8 += "い";
+  }
+  const auto seg1 = kappan::util::from_utf8(seg1_utf8);
+  const auto seg2 = kappan::util::from_utf8(seg2_utf8);
+  const auto decoded_path = std::format("/{}/{}/", seg1_utf8, seg2_utf8);
+  REQUIRE(decoded_path.size() > 256);
+
+  const auto source = make_japanese_site();
+  const std::string body = "<p>長い日本語パス 🐙</p>\n";
+  auto builder = [&](const std::filesystem::path &, const std::filesystem::path &out,
+                     kappan::DraftPolicy) {
+    write_file(out / seg1 / seg2 / "index.html", body);
+    return kappan::content::BuildResult{.pages_written = 1};
+  };
+  auto created = kappan::serve::GenerationStore::create(std::move(builder));
+  REQUIRE(created);
+  auto store = std::move(*created);
+  REQUIRE(store.publish({.source = source}).ok());
+
+  auto started = kappan::serve::HttpServer::start(store, {.host = "127.0.0.1", .port = 0});
+  REQUIRE(started);
+  auto server = std::move(*started);
+
+  httplib::Client cli{"127.0.0.1", static_cast<int>(server.port())};
+  cli.set_connection_timeout(2, 0);
+  cli.set_read_timeout(2, 0);
+
+  const auto get = cli.Get(decoded_path);
+  REQUIRE(get);
+  REQUIRE(get->status == 200);
+  REQUIRE(get->body == body);
+  REQUIRE(get->get_header_value("Content-Type").find("text/html") != std::string::npos);
+
+  const auto head = cli.Head(decoded_path);
+  REQUIRE(head);
+  REQUIRE(head->status == 200);
+  REQUIRE(head->get_header_value("Content-Length") == get->get_header_value("Content-Length"));
+  REQUIRE(head->body.empty());
+
+  server.request_stop();
+  REQUIRE(server.wait());
+  std::filesystem::remove_all(source);
+}
+
 TEST_CASE("HttpServer bind failure includes host and port", "[serve][http]") {
   auto created = kappan::serve::GenerationStore::create();
   REQUIRE(created);

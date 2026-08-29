@@ -399,9 +399,12 @@ void handle_get(GenerationStore &store, const httplib::Request &req, httplib::Re
 }
 
 void install_handlers(httplib::Server &svr, GenerationStore &store) {
-  svr.set_pre_routing_handler([](const httplib::Request &req, httplib::Response &res) {
+  // Serve GET/HEAD here so long decoded paths are not limited by
+  // CPPHTTPLIB_REGEX_ROUTE_PATH_MAX_LENGTH on RegexMatcher routes.
+  svr.set_pre_routing_handler([&store](const httplib::Request &req, httplib::Response &res) {
     if (req.method == "GET" || req.method == "HEAD") {
-      return httplib::Server::HandlerResponse::Unhandled;
+      handle_get(store, req, res);
+      return httplib::Server::HandlerResponse::Handled;
     }
     res.set_header("Allow", "GET, HEAD");
     send_html(res, httplib::StatusCode::MethodNotAllowed_405, kPage405);
@@ -411,9 +414,6 @@ void install_handlers(httplib::Server &svr, GenerationStore &store) {
       [](const httplib::Request &, httplib::Response &res, std::exception_ptr) {
         send_html(res, httplib::StatusCode::InternalServerError_500, kPage500);
       });
-  svr.Get(R"(.*)", [&store](const httplib::Request &req, httplib::Response &res) {
-    handle_get(store, req, res);
-  });
 }
 
 } // namespace
