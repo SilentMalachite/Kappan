@@ -7,10 +7,14 @@
 #include <fstream>
 #include <iterator>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <ranges>
+#include <set>
 #include <shared_mutex>
+#include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace kappan::serve {
@@ -34,6 +38,7 @@ struct Generation {
   std::shared_ptr<SessionWorkspace> session;
   std::filesystem::path root;
   std::uint64_t number = 0;
+  std::set<std::string> static_owned;
   mutable std::shared_mutex mutex;
 
   Generation() = default;
@@ -172,6 +177,257 @@ void reclaim_path(const std::filesystem::path &dir) noexcept {
   return PublishAttempt{status, pages_written, std::move(errors), std::move(snapshot)};
 }
 
+[[nodiscard]] Error path_error(const std::filesystem::path &where, std::string message) {
+  return make_error(ErrorCode::Path, std::move(message), where);
+}
+
+[[nodiscard]] bool is_out_marker_key(std::string_view key) {
+  return key == ".kappan-out" || key.ends_with("/.kappan-out");
+}
+
+[[nodiscard]] std::optional<std::filesystem::path>
+static_to_output_relative(const std::filesystem::path &relative) {
+  const auto generic = util::to_generic_utf8(relative);
+  constexpr std::string_view kPrefix{"static/"};
+  if (!generic.starts_with(kPrefix)) {
+    return std::nullopt;
+  }
+  auto out = util::from_utf8(generic.substr(kPrefix.size()));
+  if (out.empty() || out.has_root_path() || contains_dotdot(out) || out == ".") {
+    return std::nullopt;
+  }
+  return out;
+}
+
+[[nodiscard]] std::set<std::string> static_ownership_from(const SourceSnapshot &snapshot) {
+  std::set<std::string> owned;
+  for (const auto &item : snapshot.entries) {
+    const auto &entry = item.second;
+    if (entry.watch_kind != WatchKind::Static) {
+      continue;
+    }
+    const auto output = static_to_output_relative(entry.relative);
+    if (!output) {
+      continue;
+    }
+    auto key = util::to_generic_utf8(*output);
+    if (is_out_marker_key(key)) {
+      continue;
+    }
+    owned.insert(std::move(key));
+  }
+  return owned;
+}
+
+struct StaticPlan {
+  ChangeKind change_kind = ChangeKind::Modified;
+  std::filesystem::path relative;
+  std::filesystem::path output_relative;
+  std::string key;
+  std::filesystem::path source;
+  std::filesystem::path dest;
+  bool dest_existed = false;
+};
+
+struct AppliedStatic {
+  std::filesystem::path dest;
+  std::filesystem::path temp;
+  std::filesystem::path backup;
+  bool placed = false;
+};
+
+void prune_empty_ancestors(const std::filesystem::path &root, std::filesystem::path dir) noexcept {
+  std::error_code ec;
+  while (true) {
+    const auto root_abs = weakly_absolute(root);
+    const auto dir_abs = weakly_absolute(dir);
+    if (!root_abs || !dir_abs || *dir_abs == *root_abs) {
+      return;
+    }
+    const auto rel = dir_abs->lexically_relative(*root_abs);
+    if (rel.empty() || rel == "." || rel.has_root_path() || contains_dotdot(rel)) {
+      return;
+    }
+    if (!std::filesystem::is_directory(dir, ec) || ec) {
+      return;
+    }
+    if (!std::filesystem::is_empty(dir, ec) || ec) {
+      return;
+    }
+    std::filesystem::remove(dir, ec);
+    if (ec) {
+      return;
+    }
+    dir = dir.parent_path();
+  }
+}
+
+void rollback_applied(std::span<AppliedStatic> applied) noexcept {
+  std::error_code ec;
+  for (auto it = applied.rbegin(); it != applied.rend(); ++it) {
+    if (it->placed) {
+      std::filesystem::remove(it->dest, ec);
+    }
+    if (!it->backup.empty()) {
+      std::filesystem::rename(it->backup, it->dest, ec);
+    }
+    if (!it->temp.empty()) {
+      std::filesystem::remove(it->temp, ec);
+    }
+  }
+}
+
+void discard_backups(std::span<AppliedStatic> applied) noexcept {
+  std::error_code ec;
+  for (auto &op : applied) {
+    if (!op.backup.empty()) {
+      std::filesystem::remove(op.backup, ec);
+    }
+  }
+}
+
+[[nodiscard]] Result<std::filesystem::file_status> query_status(const std::filesystem::path &path) {
+  std::error_code ec;
+  auto status = std::filesystem::status(path, ec);
+  if (!std::filesystem::status_known(status)) {
+    return tl::unexpected(
+        io_error(path, std::format("{}: 種別を判定できません: {}", util::to_generic_utf8(path),
+                                   ec ? ec.message() : std::string{"種別が不明です"})));
+  }
+  return status;
+}
+
+[[nodiscard]] Result<void> apply_write(const StaticPlan &plan, AppliedStatic &applied) {
+  applied.dest = plan.dest;
+  std::error_code ec;
+  const auto parent = plan.dest.parent_path();
+  std::filesystem::create_directories(parent, ec);
+  if (ec) {
+    return tl::unexpected(
+        io_error(parent, std::format("{}: 出力先を作成できません: {}",
+                                     util::to_generic_utf8(parent), ec.message())));
+  }
+
+  applied.temp = parent / std::format(".kappan-tmp-{}", random_token());
+  std::filesystem::copy_file(plan.source, applied.temp, ec);
+  if (ec) {
+    return tl::unexpected(
+        io_error(plan.source, std::format("{}: コピーできません: {}",
+                                          util::to_generic_utf8(plan.source), ec.message())));
+  }
+
+  if (plan.dest_existed) {
+    applied.backup = parent / std::format(".kappan-bak-{}", random_token());
+    std::filesystem::rename(plan.dest, applied.backup, ec);
+    if (ec) {
+      return tl::unexpected(
+          io_error(plan.dest, std::format("{}: 退避できません: {}",
+                                          util::to_generic_utf8(plan.dest), ec.message())));
+    }
+  }
+
+  std::filesystem::rename(applied.temp, plan.dest, ec);
+  if (ec) {
+    return tl::unexpected(
+        io_error(plan.dest, std::format("{}: 配置できません: {}", util::to_generic_utf8(plan.dest),
+                                        ec.message())));
+  }
+  applied.temp.clear();
+  applied.placed = true;
+  return {};
+}
+
+[[nodiscard]] Result<void> apply_remove(const StaticPlan &plan, AppliedStatic &applied) {
+  applied.dest = plan.dest;
+  if (!plan.dest_existed) {
+    applied.placed = true;
+    return {};
+  }
+  std::error_code ec;
+  applied.backup = plan.dest.parent_path() / std::format(".kappan-bak-{}", random_token());
+  std::filesystem::rename(plan.dest, applied.backup, ec);
+  if (ec) {
+    return tl::unexpected(
+        io_error(plan.dest, std::format("{}: 削除できません: {}", util::to_generic_utf8(plan.dest),
+                                        ec.message())));
+  }
+  applied.placed = true;
+  return {};
+}
+
+void plan_change(const SourceChange &change, const std::filesystem::path &static_dir,
+                 const Generation &generation, std::set<std::string> &seen,
+                 std::vector<StaticPlan> &plans, std::vector<Error> &errors) {
+  if (change.watch_kind != WatchKind::Static) {
+    errors.push_back(
+        path_error(change.relative, std::format("{}: static 以外の変更は適用できません",
+                                                util::to_generic_utf8(change.relative))));
+    return;
+  }
+
+  const auto output = static_to_output_relative(change.relative);
+  if (!output || escapes_root(generation.root, *output) || escapes_root(static_dir, *output)) {
+    errors.push_back(
+        path_error(change.relative, std::format("{}: static の出力先が生成世代の外です",
+                                                util::to_generic_utf8(change.relative))));
+    return;
+  }
+
+  StaticPlan plan;
+  plan.change_kind = change.change_kind;
+  plan.relative = change.relative;
+  plan.output_relative = *output;
+  plan.key = util::to_generic_utf8(*output);
+  plan.dest = generation.root / plan.output_relative;
+  plan.source = static_dir / plan.output_relative;
+
+  if (is_out_marker_key(plan.key) || !seen.insert(plan.key).second) {
+    errors.push_back(
+        path_error(change.relative, std::format("{}: static の出力先が生成ページと衝突します",
+                                                util::to_generic_utf8(change.relative))));
+    return;
+  }
+
+  auto dest_st = query_status(plan.dest);
+  if (!dest_st) {
+    errors.push_back(dest_st.error());
+    return;
+  }
+  plan.dest_existed = std::filesystem::exists(*dest_st);
+  const bool owned = generation.static_owned.contains(plan.key);
+  const bool generated = plan.dest_existed && !owned;
+
+  if (change.change_kind == ChangeKind::Removed) {
+    if (!owned) {
+      errors.push_back(
+          path_error(change.relative, std::format("{}: 所有していない出力は削除できません",
+                                                  util::to_generic_utf8(change.relative))));
+      return;
+    }
+    plans.push_back(std::move(plan));
+    return;
+  }
+
+  if (generated || (plan.dest_existed && !std::filesystem::is_regular_file(*dest_st))) {
+    errors.push_back(
+        path_error(change.relative, std::format("{}: static の出力先が生成ページと衝突します",
+                                                util::to_generic_utf8(change.relative))));
+    return;
+  }
+
+  auto src_st = query_status(plan.source);
+  if (!src_st) {
+    errors.push_back(src_st.error());
+    return;
+  }
+  if (!std::filesystem::is_regular_file(*src_st)) {
+    errors.push_back(io_error(plan.source, std::format("{}: 通常ファイルではありません",
+                                                       util::to_generic_utf8(plan.source))));
+    return;
+  }
+  plans.push_back(std::move(plan));
+}
+
 } // namespace
 
 struct GenerationReadLease::Impl {
@@ -189,7 +445,9 @@ struct GenerationStore::Impl {
   SiteBuilder builder;
 
   [[nodiscard]] Result<GenerationSlot> allocate();
-  void activate(GenerationSlot slot);
+  void activate(GenerationSlot slot, const SourceSnapshot &snapshot);
+  [[nodiscard]] std::vector<Error> apply_static(std::span<const SourceChange> changes,
+                                                const std::filesystem::path &static_dir);
 };
 
 GenerationReadLease::GenerationReadLease(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
@@ -242,11 +500,12 @@ Result<GenerationSlot> GenerationStore::Impl::allocate() {
   return slot;
 }
 
-void GenerationStore::Impl::activate(GenerationSlot slot) {
+void GenerationStore::Impl::activate(GenerationSlot slot, const SourceSnapshot &snapshot) {
   auto next = std::make_shared<Generation>();
   next->session = session;
   next->root = std::move(slot.dir);
   next->number = slot.number;
+  next->static_owned = static_ownership_from(snapshot);
 
   std::unique_lock state(state_mutex);
   auto previous = std::move(current);
@@ -288,7 +547,7 @@ PublishAttempt GenerationStore::publish(const PublishOptions &options) {
   }
 
   const auto pages_written = result.pages_written;
-  impl_->activate(std::move(*slot));
+  impl_->activate(std::move(*slot), *pre);
   return PublishAttempt{PublishStatus::Activated, pages_written, {}, std::move(*pre)};
 }
 
@@ -306,6 +565,61 @@ Result<GenerationReadLease> GenerationStore::acquire_read() const {
 std::uint64_t GenerationStore::generation() const {
   std::shared_lock state(impl_->state_mutex);
   return impl_->generation;
+}
+
+std::vector<Error> GenerationStore::apply_static(std::span<const SourceChange> changes,
+                                                 const std::filesystem::path &static_dir) {
+  return impl_->apply_static(changes, static_dir);
+}
+
+std::vector<Error> GenerationStore::Impl::apply_static(std::span<const SourceChange> changes,
+                                                       const std::filesystem::path &static_dir) {
+  std::lock_guard<std::mutex> publish_lock(publish_mutex);
+  std::unique_lock state(state_mutex);
+  if (!current) {
+    return {io_error(session->root, "配信できる生成世代がありません")};
+  }
+  auto gen = current;
+  std::unique_lock write_lock(gen->mutex);
+
+  std::vector<StaticPlan> plans;
+  std::vector<Error> errors;
+  std::set<std::string> seen;
+  for (const auto &change : changes) {
+    plan_change(change, static_dir, *gen, seen, plans, errors);
+  }
+  if (!errors.empty() || plans.empty()) {
+    return errors;
+  }
+
+  std::vector<AppliedStatic> applied;
+  applied.reserve(plans.size());
+  for (const auto &plan : plans) {
+    auto &op = applied.emplace_back();
+    const auto step =
+        plan.change_kind == ChangeKind::Removed ? apply_remove(plan, op) : apply_write(plan, op);
+    if (!step) {
+      rollback_applied(applied);
+      return {step.error()};
+    }
+  }
+
+  discard_backups(applied);
+  for (const auto &plan : plans) {
+    if (plan.change_kind == ChangeKind::Removed) {
+      gen->static_owned.erase(plan.key);
+      prune_empty_ancestors(gen->root, plan.dest.parent_path());
+    } else {
+      gen->static_owned.insert(plan.key);
+    }
+  }
+
+  gen->number += 1;
+  generation = gen->number;
+  if (next_id <= generation) {
+    next_id = generation + 1;
+  }
+  return {};
 }
 
 } // namespace kappan::serve

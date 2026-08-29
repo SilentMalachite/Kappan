@@ -82,6 +82,15 @@ constexpr std::byte kWasmBytes[] = {
   return dest;
 }
 
+[[nodiscard]] kappan::serve::SourceChange static_change(kappan::serve::ChangeKind kind,
+                                                        std::string_view relative_utf8) {
+  return {
+      .watch_kind = kappan::serve::WatchKind::Static,
+      .change_kind = kind,
+      .relative = kappan::util::from_utf8(relative_utf8),
+  };
+}
+
 } // namespace
 
 TEST_CASE("acquire_read without a generation returns Io", "[serve][publish]") {
@@ -244,6 +253,206 @@ TEST_CASE("read lease keeps the previous generation until it is dropped", "[serv
   held.reset();
   REQUIRE_FALSE(std::filesystem::exists(gen1_root));
   REQUIRE(std::filesystem::exists(second_acquired->root()));
+
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("apply_static adds and updates Japanese emoji assets", "[serve][publish]") {
+  const auto source = make_japanese_site();
+  auto created = kappan::serve::GenerationStore::create();
+  REQUIRE(created);
+  auto store = std::move(*created);
+
+  REQUIRE(store.publish({.source = source}).ok());
+  REQUIRE(store.generation() == 1);
+
+  const auto svg_rel = kappan::util::from_utf8("static/images/日本語🐙.svg");
+  const auto out_rel = kappan::util::from_utf8("images/日本語🐙.svg");
+  write_file(source / svg_rel, "<svg id=\"初版\"/>\n");
+
+  const auto added = store.apply_static(
+      std::vector<kappan::serve::SourceChange>{
+          static_change(kappan::serve::ChangeKind::Added, "static/images/日本語🐙.svg"),
+      },
+      source / "static");
+  REQUIRE(added.empty());
+  REQUIRE(store.generation() == 2);
+
+  {
+    auto acquired = store.acquire_read();
+    REQUIRE(acquired);
+    REQUIRE(acquired->generation() == 2);
+    const auto svg = acquired->read_bytes(out_rel);
+    REQUIRE(svg);
+    REQUIRE(as_text(*svg) == "<svg id=\"初版\"/>\n");
+    REQUIRE(std::filesystem::exists(acquired->root() / out_rel));
+  }
+
+  write_file(source / svg_rel, "<svg id=\"改訂🐙\"/>\n");
+  const auto updated = store.apply_static(
+      std::vector<kappan::serve::SourceChange>{
+          static_change(kappan::serve::ChangeKind::Modified, "static/images/日本語🐙.svg"),
+      },
+      source / "static");
+  REQUIRE(updated.empty());
+  REQUIRE(store.generation() == 3);
+
+  auto acquired = store.acquire_read();
+  REQUIRE(acquired);
+  REQUIRE(acquired->generation() == 3);
+  const auto svg = acquired->read_bytes(out_rel);
+  REQUIRE(svg);
+  REQUIRE(as_text(*svg) == "<svg id=\"改訂🐙\"/>\n");
+
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("apply_static deletes owned static outputs only", "[serve][publish]") {
+  const auto source = make_japanese_site();
+  auto created = kappan::serve::GenerationStore::create();
+  REQUIRE(created);
+  auto store = std::move(*created);
+
+  REQUIRE(store.publish({.source = source}).ok());
+  REQUIRE(store.generation() == 1);
+
+  std::filesystem::path gen_root;
+  {
+    auto acquired = store.acquire_read();
+    REQUIRE(acquired);
+    gen_root = acquired->root();
+    const auto wasm = acquired->read_bytes(std::filesystem::path{"bin"} / "sample.wasm");
+    REQUIRE(wasm);
+    REQUIRE(*wasm == wasm_payload());
+  }
+
+  const auto removed = store.apply_static(
+      std::vector<kappan::serve::SourceChange>{
+          static_change(kappan::serve::ChangeKind::Removed, "static/bin/sample.wasm"),
+      },
+      source / "static");
+  REQUIRE(removed.empty());
+  REQUIRE(store.generation() == 2);
+  REQUIRE_FALSE(std::filesystem::exists(gen_root / "bin" / "sample.wasm"));
+  REQUIRE_FALSE(std::filesystem::exists(gen_root / "bin"));
+  REQUIRE(std::filesystem::exists(gen_root / "index.html"));
+
+  const auto unowned = store.apply_static(
+      std::vector<kappan::serve::SourceChange>{
+          static_change(kappan::serve::ChangeKind::Removed, "static/index.html"),
+      },
+      source / "static");
+  REQUIRE_FALSE(unowned.empty());
+  REQUIRE(unowned.front().code == kappan::ErrorCode::Path);
+  REQUIRE(store.generation() == 2);
+  REQUIRE(std::filesystem::exists(gen_root / "index.html"));
+
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("apply_static rejects generated page collisions without writing", "[serve][publish]") {
+  const auto source = make_japanese_site();
+  auto created = kappan::serve::GenerationStore::create();
+  REQUIRE(created);
+  auto store = std::move(*created);
+
+  REQUIRE(store.publish({.source = source}).ok());
+  REQUIRE(store.generation() == 1);
+
+  kappan::serve::ByteBuffer index_before;
+  kappan::serve::ByteBuffer wasm_before;
+  std::filesystem::path gen_root;
+  {
+    auto acquired = store.acquire_read();
+    REQUIRE(acquired);
+    gen_root = acquired->root();
+    auto index = acquired->read_bytes(std::filesystem::path{"index.html"});
+    REQUIRE(index);
+    index_before = std::move(*index);
+    auto wasm = acquired->read_bytes(std::filesystem::path{"bin"} / "sample.wasm");
+    REQUIRE(wasm);
+    wasm_before = std::move(*wasm);
+  }
+
+  write_file(source / "static" / "index.html", "<p>衝突</p>\n");
+  const auto collided = store.apply_static(
+      std::vector<kappan::serve::SourceChange>{
+          static_change(kappan::serve::ChangeKind::Added, "static/index.html"),
+      },
+      source / "static");
+  REQUIRE_FALSE(collided.empty());
+  REQUIRE(collided.front().code == kappan::ErrorCode::Path);
+  REQUIRE(store.generation() == 1);
+
+  write_file(source / "static" / "bin" / "sample.wasm", "壊す");
+  write_file(source / "static" / kappan::util::from_utf8("images/日本語🐙.svg"), "<svg/>\n");
+  const auto mixed = store.apply_static(
+      std::vector<kappan::serve::SourceChange>{
+          static_change(kappan::serve::ChangeKind::Modified, "static/bin/sample.wasm"),
+          static_change(kappan::serve::ChangeKind::Added, "static/images/日本語🐙.svg"),
+          static_change(kappan::serve::ChangeKind::Added, "static/index.html"),
+      },
+      source / "static");
+  REQUIRE_FALSE(mixed.empty());
+  REQUIRE(mixed.front().code == kappan::ErrorCode::Path);
+  REQUIRE(store.generation() == 1);
+  REQUIRE_FALSE(std::filesystem::exists(gen_root / kappan::util::from_utf8("images/日本語🐙.svg")));
+
+  auto acquired = store.acquire_read();
+  REQUIRE(acquired);
+  REQUIRE(acquired->generation() == 1);
+  const auto index_after = acquired->read_bytes(std::filesystem::path{"index.html"});
+  REQUIRE(index_after);
+  REQUIRE(*index_after == index_before);
+  const auto wasm_after = acquired->read_bytes(std::filesystem::path{"bin"} / "sample.wasm");
+  REQUIRE(wasm_after);
+  REQUIRE(*wasm_after == wasm_before);
+
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("apply_static rolls back earlier writes when a later copy fails", "[serve][publish]") {
+  const auto source = make_japanese_site();
+  auto created = kappan::serve::GenerationStore::create();
+  REQUIRE(created);
+  auto store = std::move(*created);
+
+  REQUIRE(store.publish({.source = source}).ok());
+  REQUIRE(store.generation() == 1);
+
+  std::filesystem::path gen_root;
+  kappan::serve::ByteBuffer index_before;
+  {
+    auto acquired = store.acquire_read();
+    REQUIRE(acquired);
+    gen_root = acquired->root();
+    auto index = acquired->read_bytes(std::filesystem::path{"index.html"});
+    REQUIRE(index);
+    index_before = std::move(*index);
+  }
+
+  const auto svg_out = kappan::util::from_utf8("images/日本語🐙.svg");
+  write_file(source / kappan::util::from_utf8("static/images/日本語🐙.svg"),
+             "<svg id=\"途中\"/>\n");
+  write_file(source / "static" / "index.html" / "nested.txt", "nested\n");
+
+  const auto failed = store.apply_static(
+      std::vector<kappan::serve::SourceChange>{
+          static_change(kappan::serve::ChangeKind::Added, "static/images/日本語🐙.svg"),
+          static_change(kappan::serve::ChangeKind::Added, "static/index.html/nested.txt"),
+      },
+      source / "static");
+  REQUIRE_FALSE(failed.empty());
+  REQUIRE(store.generation() == 1);
+  REQUIRE_FALSE(std::filesystem::exists(gen_root / svg_out));
+  REQUIRE(std::filesystem::is_regular_file(gen_root / "index.html"));
+
+  auto acquired = store.acquire_read();
+  REQUIRE(acquired);
+  REQUIRE(acquired->generation() == 1);
+  const auto index_after = acquired->read_bytes(std::filesystem::path{"index.html"});
+  REQUIRE(index_after);
+  REQUIRE(*index_after == index_before);
 
   std::filesystem::remove_all(source);
 }

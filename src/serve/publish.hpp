@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace kappan::serve {
@@ -65,6 +66,8 @@ public:
   GenerationStore &operator=(const GenerationStore &) = delete;
 
   [[nodiscard]] PublishAttempt publish(const PublishOptions &options);
+  [[nodiscard]] std::vector<Error> apply_static(std::span<const SourceChange> changes,
+                                                const std::filesystem::path &static_dir);
   [[nodiscard]] Result<GenerationReadLease> acquire_read() const;
   [[nodiscard]] std::uint64_t generation() const;
 
