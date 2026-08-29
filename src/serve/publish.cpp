@@ -166,9 +166,10 @@ void reclaim_path(const std::filesystem::path &dir) noexcept {
 
 [[nodiscard]] PublishAttempt reject_generation(PublishStatus status, int pages_written,
                                                std::vector<Error> errors,
-                                               const std::filesystem::path &dir) {
+                                               const std::filesystem::path &dir,
+                                               SourceSnapshot snapshot = {}) {
   reclaim_path(dir);
-  return PublishAttempt{status, pages_written, std::move(errors)};
+  return PublishAttempt{status, pages_written, std::move(errors), std::move(snapshot)};
 }
 
 } // namespace
@@ -260,12 +261,12 @@ PublishAttempt GenerationStore::publish(const PublishOptions &options) {
 
   auto pre = snapshot_source(options.source);
   if (!pre) {
-    return PublishAttempt{PublishStatus::BuildFailed, 0, {pre.error()}};
+    return PublishAttempt{PublishStatus::BuildFailed, 0, {pre.error()}, {}};
   }
 
   auto slot = impl_->allocate();
   if (!slot) {
-    return PublishAttempt{PublishStatus::BuildFailed, 0, {slot.error()}};
+    return PublishAttempt{PublishStatus::BuildFailed, 0, {slot.error()}, {}};
   }
 
   auto result = impl_->builder(options.source, slot->dir, options.drafts);
@@ -279,7 +280,7 @@ PublishAttempt GenerationStore::publish(const PublishOptions &options) {
   }
   if (*pre != *post) {
     return reject_generation(PublishStatus::SourceChanged, result.pages_written,
-                             std::move(result.errors), slot->dir);
+                             std::move(result.errors), slot->dir, std::move(*post));
   }
   if (!result.errors.empty()) {
     return reject_generation(PublishStatus::BuildFailed, result.pages_written,
@@ -288,7 +289,7 @@ PublishAttempt GenerationStore::publish(const PublishOptions &options) {
 
   const auto pages_written = result.pages_written;
   impl_->activate(std::move(*slot));
-  return PublishAttempt{PublishStatus::Activated, pages_written, {}};
+  return PublishAttempt{PublishStatus::Activated, pages_written, {}, std::move(*pre)};
 }
 
 Result<GenerationReadLease> GenerationStore::acquire_read() const {

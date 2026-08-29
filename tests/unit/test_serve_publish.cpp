@@ -106,6 +106,7 @@ TEST_CASE("publish activates a Japanese site and keeps it on build failure", "[s
   REQUIRE(first.ok());
   REQUIRE_FALSE(first.retry_required());
   REQUIRE(first.errors.empty());
+  REQUIRE_FALSE(first.snapshot.entries.empty());
   REQUIRE(first.pages_written == 5);
   REQUIRE(store.generation() == 1);
   REQUIRE_FALSE(std::filesystem::exists(source / "_site"));
@@ -140,6 +141,7 @@ TEST_CASE("publish activates a Japanese site and keeps it on build failure", "[s
   REQUIRE_FALSE(failed.ok());
   REQUIRE_FALSE(failed.retry_required());
   REQUIRE_FALSE(failed.errors.empty());
+  REQUIRE(failed.snapshot.entries.empty());
   REQUIRE(failed.errors.front().code == kappan::ErrorCode::FrontMatter);
   REQUIRE(store.generation() == 1);
   REQUIRE(count_generation_dirs(workspace) == 1);
@@ -174,6 +176,7 @@ TEST_CASE("publish reports SourceChanged when source mutates during build", "[se
 
   const auto first = store.publish({.source = source});
   REQUIRE(first.status == kappan::serve::PublishStatus::Activated);
+  REQUIRE_FALSE(first.snapshot.entries.empty());
   REQUIRE(store.generation() == 1);
 
   auto acquired = store.acquire_read();
@@ -187,6 +190,8 @@ TEST_CASE("publish reports SourceChanged when source mutates during build", "[se
   REQUIRE(changed.status == kappan::serve::PublishStatus::SourceChanged);
   REQUIRE(changed.retry_required());
   REQUIRE_FALSE(changed.ok());
+  REQUIRE_FALSE(changed.snapshot.entries.empty());
+  REQUIRE(changed.snapshot != first.snapshot);
   REQUIRE(store.generation() == 1);
   REQUIRE(count_generation_dirs(workspace) == 1);
   REQUIRE(std::filesystem::exists(gen1_root / "index.html"));

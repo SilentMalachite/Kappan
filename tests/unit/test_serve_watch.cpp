@@ -233,6 +233,15 @@ TEST_CASE("WatchState retries only on new observe or source_changed", "[serve][w
   // stable failure: published は進まず、同じ snapshot では連続 retry しない
   REQUIRE_FALSE(state.should_attempt());
 
+  // retry_pending: ファイルを増やさず同じ snapshot でも再試行する
+  // （observed_ == attempted_ のため、retry_pending_ が無いと should_attempt は false）
+  state.mark_source_changed(*content_v1);
+  REQUIRE(state.should_attempt());
+  auto retry_same = state.begin_attempt();
+  REQUIRE(retry_same.baseline == *initial);
+  REQUIRE(retry_same.target == *content_v1);
+  REQUIRE_FALSE(state.should_attempt());
+
   // mid-build の追加保存: 失敗済み attempted ではなく published からの差分になる
   write_file(root / "content" / "extra.md", "# 追加\n");
   auto content_v2 = kappan::serve::snapshot_source(root);

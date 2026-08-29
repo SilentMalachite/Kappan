@@ -1,6 +1,7 @@
 #pragma once
 
 #include "content/build.hpp"
+#include "serve/watch.hpp"
 
 #include <kappan/error.hpp>
 #include <kappan/site.hpp>
@@ -29,6 +30,7 @@ struct PublishAttempt {
   PublishStatus status = PublishStatus::BuildFailed;
   int pages_written = 0;
   std::vector<Error> errors;
+  SourceSnapshot snapshot; // post-build; set on Activated and SourceChanged
   [[nodiscard]] bool ok() const { return status == PublishStatus::Activated; }
   [[nodiscard]] bool retry_required() const { return status == PublishStatus::SourceChanged; }
 };
