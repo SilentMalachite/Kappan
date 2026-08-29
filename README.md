@@ -41,7 +41,11 @@ cmake --build --preset release
 ./build/dev/kappan new my-site
 ```
 
-いま動くサブコマンドは `build`（`site.yaml` のあるサイト根 → HTML）です。`serve` / `new` は後のフェーズで足します。
+いま動くサブコマンドは `build`、`serve`、`new` です。
+
+- `build` — `site.yaml` のあるサイト根 → HTML
+- `serve` — 生成結果を loopback（既定 `127.0.0.1`）で配信する。`--watch` で保存後に再生成する。再生成が失敗してもサーバーは止まらず、直前に成功したページを出し続ける
+- `new` — 空ディレクトリにサイト骨格を書き出す
 
 ```bash
 ./build/dev/kappan build --source tests/fixtures/site-ja --out /tmp/kappan-out

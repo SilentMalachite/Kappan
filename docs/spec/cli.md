@@ -30,16 +30,22 @@ kappan build --source <site-root> --out <dir> [--drafts] [--force]
 
 ## `kappan serve`
 
-生成結果を loopback HTTP で配信する。`--watch` は後のフェーズで足す。
+生成結果を loopback HTTP で配信する。`--watch` でソースの変更を監視し、成功した新世代だけを配信する。
 
 ```
-kappan serve --source <site-root> [--host 127.0.0.1] [--port 8080] [--drafts]
+kappan serve --source <dir> [--host 127.0.0.1] [--port 8080] [--watch] [--drafts]
 ```
 
 - `--source` は必須。`site.yaml` のあるディレクトリ。
 - `--host` の既定値は `127.0.0.1`。明示指定なしに LAN へ公開しない。
 - `--port` の既定値は 8080。CLI 上の範囲は `1..65535`。
 - `--drafts` が無いとき `draft: true` の記事は出さない。
+- `--watch` は `site.yaml`、`content/`、`templates/`、`static/` の変更を監視する。
+  - Config / Content / Template（およびそれらと Static の混在）は新しい世代へ全体生成する。
+  - Static のみはファイル単位で反映し、生成ページを上書きしない。
+  - 再生成に失敗しても待ち受けは止めない（非 fatal）。エラーは「どのファイルの、何が、どうダメか」をログに出し、直前の正常世代を配信し続ける。
+  - 正常に反映できた変更だけ generation を進める。watch 中の HTML 応答へだけ reload script を注入し、ブラウザは成功後の世代変化でのみ再読み込みする。失敗中は reload しない。
+  - `GET /__kappan/reload` は世代番号を UTF-8 数字で返す（`Cache-Control: no-store`）。`--watch` が無いときは 404。
 - 初回のサイト生成に失敗したら待ち受けせず、エラーを報告して非 0 で終了する。
 - bind に失敗したら host と port を含む `ErrorCode::Io` で非 0 終了する。
 - `Ctrl-C`（SIGINT、および SIGTERM）で待ち受けを止め、HTTP thread を join し、一時 workspace を回収する。signal handler は停止フラグを立てるだけであり、stop・ログ・filesystem・mutex は呼ばない。
