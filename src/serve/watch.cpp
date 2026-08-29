@@ -166,33 +166,36 @@ constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
     return {};
   }
 
-  for (const auto &entry : std::filesystem::directory_iterator(templates_dir, ec)) {
+  auto it = std::filesystem::directory_iterator(templates_dir, ec);
+  if (ec) {
+    return tl::unexpected(
+        io_error(templates_dir, std::format("{}: テンプレートを走査できません: {}",
+                                            util::to_generic_utf8(templates_dir), ec.message())));
+  }
+
+  const std::filesystem::directory_iterator end;
+  while (it != end) {
+    std::error_code type_ec;
+    const auto entry_status = it->status(type_ec);
+    if (!std::filesystem::status_known(entry_status)) {
+      return tl::unexpected(io_error(
+          it->path(), std::format("{}: 種別を判定できません: {}", util::to_generic_utf8(it->path()),
+                                  type_ec ? type_ec.message() : std::string{"種別が不明です"})));
+    }
+    if (std::filesystem::is_regular_file(entry_status) && it->path().extension() == ".html") {
+      const auto rel = std::filesystem::path{"templates"} / it->path().filename();
+      auto inserted = insert_entry(snap, WatchKind::Template, it->path(), rel, true);
+      if (!inserted) {
+        return inserted;
+      }
+    }
+
+    it.increment(ec);
     if (ec) {
       return tl::unexpected(
           io_error(templates_dir, std::format("{}: テンプレートを走査できません: {}",
                                               util::to_generic_utf8(templates_dir), ec.message())));
     }
-    std::error_code type_ec;
-    const auto entry_status = entry.status(type_ec);
-    if (!std::filesystem::status_known(entry_status)) {
-      return tl::unexpected(
-          io_error(entry.path(),
-                   std::format("{}: 種別を判定できません: {}", util::to_generic_utf8(entry.path()),
-                               type_ec ? type_ec.message() : std::string{"種別が不明です"})));
-    }
-    if (!std::filesystem::is_regular_file(entry_status) || entry.path().extension() != ".html") {
-      continue;
-    }
-    const auto rel = std::filesystem::path{"templates"} / entry.path().filename();
-    auto inserted = insert_entry(snap, WatchKind::Template, entry.path(), rel, true);
-    if (!inserted) {
-      return inserted;
-    }
-  }
-  if (ec) {
-    return tl::unexpected(
-        io_error(templates_dir, std::format("{}: テンプレートを走査できません: {}",
-                                            util::to_generic_utf8(templates_dir), ec.message())));
   }
   return {};
 }
