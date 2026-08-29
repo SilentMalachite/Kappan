@@ -18,7 +18,7 @@ add_executable(
   unit/test_serve_watch.cpp
   unit/test_serve_publish.cpp
   golden/test_golden.cpp)
-target_link_libraries(kappan_tests PRIVATE kappan_lib Catch2::Catch2WithMain)
+target_link_libraries(kappan_tests PRIVATE kappan_lib Catch2::Catch2WithMain httplib::httplib)
 target_include_directories(kappan_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 kappan_set_warnings(kappan_tests)
 

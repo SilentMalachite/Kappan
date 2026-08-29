@@ -16,6 +16,7 @@ find_package(cmark-gfm-extensions CONFIG REQUIRED)
 find_package(yaml-cpp CONFIG REQUIRED)
 find_package(inja CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(httplib CONFIG REQUIRED)
 
 set(KAPPAN_THEME_DIR ${CMAKE_SOURCE_DIR}/themes/default)
 set(KAPPAN_EMBEDDED_THEME ${CMAKE_BINARY_DIR}/include/kappan/embedded_theme.hpp)
@@ -78,7 +79,7 @@ target_compile_definitions(kappan_lib PUBLIC CMARK_GFM_STATIC_DEFINE CMARK_GFM_E
 target_link_libraries(
   kappan_lib
   PUBLIC tl::expected spdlog::spdlog libcmark-gfm-extensions_static libcmark-gfm_static
-  PRIVATE yaml-cpp::yaml-cpp pantor::inja nlohmann_json::nlohmann_json)
+  PRIVATE yaml-cpp::yaml-cpp pantor::inja nlohmann_json::nlohmann_json httplib::httplib)
 
 function(kappan_set_warnings target)
   if(MSVC)
