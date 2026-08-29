@@ -153,6 +153,46 @@ TEST_CASE("resolve_request_path maps pretty URLs and Japanese files", "[serve][h
   REQUIRE(about_redirect->kind == kappan::serve::ResolveKind::Redirect);
   REQUIRE(about_redirect->location == "/about/");
 
+  const auto queried_redirect =
+      kappan::serve::resolve_request_path(root.path, "/about?lang=ja&x=1");
+  REQUIRE(queried_redirect);
+  REQUIRE(queried_redirect->kind == kappan::serve::ResolveKind::Redirect);
+  REQUIRE(queried_redirect->location == "/about/?lang=ja&x=1");
+
+  const auto encoded_query =
+      kappan::serve::resolve_request_path(root.path, "/about?next=%2526admin%253D1&literal=%2B");
+  REQUIRE(encoded_query);
+  REQUIRE(encoded_query->kind == kappan::serve::ResolveKind::Redirect);
+  REQUIRE(encoded_query->location == "/about/?next=%2526admin%253D1&literal=%2B");
+
+  // httplib は request target 内の TAB・DEL・その他 C0 制御文字を落とさない。素通しすると
+  // Location が field-value にならず、set_redirect が黙って何もしない。
+  const auto tab_query = kappan::serve::resolve_request_path(root.path, "/about?x=a\tb");
+  REQUIRE(tab_query);
+  REQUIRE(tab_query->kind == kappan::serve::ResolveKind::Redirect);
+  REQUIRE(tab_query->location == "/about/?x=a%09b");
+
+  const auto del_query = kappan::serve::resolve_request_path(root.path, "/about?x=\x7F");
+  REQUIRE(del_query);
+  REQUIRE(del_query->kind == kappan::serve::ResolveKind::Redirect);
+  REQUIRE(del_query->location == "/about/?x=%7F");
+
+  const auto raw_utf8_query = kappan::serve::resolve_request_path(root.path, "/about?q=あ");
+  REQUIRE(raw_utf8_query);
+  REQUIRE(raw_utf8_query->kind == kappan::serve::ResolveKind::Redirect);
+  REQUIRE(raw_utf8_query->location == "/about/?q=%E3%81%82");
+
+  const auto empty_query = kappan::serve::resolve_request_path(root.path, "/about?");
+  REQUIRE(empty_query);
+  REQUIRE(empty_query->kind == kappan::serve::ResolveKind::Redirect);
+  REQUIRE(empty_query->location == "/about/");
+
+  // 先頭 '//' の Location は protocol-relative URL として別ホストへ解決される。
+  const auto double_slash = kappan::serve::resolve_request_path(root.path, "//about");
+  REQUIRE(double_slash);
+  REQUIRE(double_slash->kind == kappan::serve::ResolveKind::Redirect);
+  REQUIRE(double_slash->location == "/about/");
+
   const auto ja_page = kappan::serve::resolve_request_path(root.path, std::format("/{}/", ja));
   REQUIRE(ja_page);
   REQUIRE(ja_page->kind == kappan::serve::ResolveKind::File);
@@ -216,6 +256,11 @@ TEST_CASE("resolve_request_path rejects traversal and hides the out marker", "[s
   const auto drive = kappan::serve::resolve_request_path(root.path, "/C:/Windows");
   REQUIRE_FALSE(drive);
   REQUIRE(drive.error().code == kappan::ErrorCode::Path);
+
+  const auto header_injection =
+      kappan::serve::resolve_request_path(root.path, "/about?lang=ja\r\nX-Test: injected");
+  REQUIRE_FALSE(header_injection);
+  REQUIRE(header_injection.error().code == kappan::ErrorCode::Path);
 }
 
 TEST_CASE("content_type_for maps known extensions and UTF-8 charset", "[serve][http]") {
@@ -304,6 +349,26 @@ TEST_CASE("HttpServer serves Japanese pages, emoji assets, query, and wasm", "[s
   REQUIRE((about_redirect->status == 301 || about_redirect->status == 302));
   REQUIRE(about_redirect->get_header_value("Location") == "/about/");
   REQUIRE(about_redirect->get_header_value("Cache-Control") == "no-cache");
+
+  const auto queried_redirect = cli.Get("/about?lang=ja&x=1");
+  REQUIRE(queried_redirect);
+  REQUIRE((queried_redirect->status == 301 || queried_redirect->status == 302));
+  REQUIRE(queried_redirect->get_header_value("Location") == "/about/?lang=ja&x=1");
+
+  cli.set_path_encode(false);
+  const auto encoded_query = cli.Get("/about?next=%2526admin%253D1&literal=%2B");
+  REQUIRE(encoded_query);
+  REQUIRE((encoded_query->status == 301 || encoded_query->status == 302));
+  REQUIRE(encoded_query->get_header_value("Location") ==
+          "/about/?next=%2526admin%253D1&literal=%2B");
+
+  // 生の TAB は httplib の request line 解析を通り抜けて target に載る。encode せずに
+  // Location へ入れると set_redirect が無反応になり、301 ではなく空の 200 が返る。
+  const auto raw_tab_query = cli.Get("/about?x=a\tb");
+  REQUIRE(raw_tab_query);
+  REQUIRE((raw_tab_query->status == 301 || raw_tab_query->status == 302));
+  REQUIRE(raw_tab_query->get_header_value("Location") == "/about/?x=a%09b");
+  cli.set_path_encode(true);
 
   server.request_stop();
   server.request_stop();

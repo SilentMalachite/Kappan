@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <exception>
 #include <format>
+#include <iostream>
 #include <optional>
 #include <string>
 #include <thread>
@@ -64,25 +65,41 @@ namespace {
   return out;
 }
 
-[[nodiscard]] bool is_unreserved_path_byte(unsigned char ch) {
+// RFC 3986 の unreserved。パスセグメントはこれ以外をすべて percent-encode する。
+[[nodiscard]] bool is_unreserved_byte(unsigned char ch) {
   return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
-         ch == '-' || ch == '.' || ch == '_' || ch == '~' || ch == '/';
+         ch == '-' || ch == '.' || ch == '_' || ch == '~';
 }
 
-[[nodiscard]] std::string make_redirect_location(std::string_view decoded_path) {
-  std::string path{decoded_path};
-  if (!path.ends_with('/')) {
-    path.push_back('/');
-  }
+// RFC 3986 の query に現れてよいバイト（pchar / '/' / '?'）に '%' を加えたもの。
+// '%' を通すのは、すでに percent-encode 済みのクエリを二重に encode しないため。
+[[nodiscard]] bool is_query_byte(unsigned char ch) {
+  return is_unreserved_byte(ch) || ch == '%' || ch == '/' || ch == '?' || ch == ':' || ch == '@' ||
+         ch == '!' || ch == '$' || ch == '&' || ch == '\'' || ch == '(' || ch == ')' || ch == '*' ||
+         ch == '+' || ch == ',' || ch == ';' || ch == '=';
+}
+
+[[nodiscard]] std::string percent_encode(std::string_view raw, bool (*allowed)(unsigned char)) {
   std::string out;
-  out.reserve(path.size());
-  for (const char raw : path) {
-    const auto ch = static_cast<unsigned char>(raw);
-    if (is_unreserved_path_byte(ch)) {
+  out.reserve(raw.size());
+  for (const char byte : raw) {
+    const auto ch = static_cast<unsigned char>(byte);
+    if (allowed(ch)) {
       out.push_back(static_cast<char>(ch));
     } else {
       out += std::format("%{:02X}", static_cast<unsigned>(ch));
     }
+  }
+  return out;
+}
+
+// 解決に使ったセグメントから組み立てる。空セグメントが落ちるので、先頭 '//' が
+// protocol-relative URL として解釈される Location にならない。
+[[nodiscard]] std::string make_redirect_location(const std::vector<std::string> &segments) {
+  std::string out{"/"};
+  for (const auto &segment : segments) {
+    out += percent_encode(segment, is_unreserved_byte);
+    out.push_back('/');
   }
   return out;
 }
@@ -120,19 +137,37 @@ namespace {
   return segments;
 }
 
+struct SplitTarget {
+  std::string_view path_part;
+  std::string_view query_suffix; // 先頭の '?' を含む。クエリが空なら空。
+};
+
+[[nodiscard]] SplitTarget split_target(std::string_view raw_target) {
+  const auto query_pos = raw_target.find('?');
+  if (query_pos == std::string_view::npos) {
+    return SplitTarget{.path_part = raw_target};
+  }
+  const auto suffix = raw_target.substr(query_pos);
+  // '?' だけの target はクエリを持たない URL と同じ。Location に '?' を残さない。
+  return SplitTarget{.path_part = raw_target.substr(0, query_pos),
+                     .query_suffix = suffix.size() == 1 ? std::string_view{} : suffix};
+}
+
 struct ParsedTarget {
   std::string decoded;
+  std::string query_suffix;
+  std::vector<std::string> segments;
   std::filesystem::path relative;
   bool trailing_slash = false;
 };
 
 [[nodiscard]] Result<ParsedTarget> parse_request_target(std::string_view raw_target) {
-  if (contains_char(raw_target, '\0') || contains_char(raw_target, '\\')) {
+  if (contains_char(raw_target, '\0') || contains_char(raw_target, '\\') ||
+      contains_char(raw_target, '\r') || contains_char(raw_target, '\n')) {
     return tl::unexpected(
-        path_error("リクエストパスに NUL またはバックスラッシュが含まれています"));
+        path_error("リクエストパスに NUL、バックスラッシュ、CR または LF が含まれています"));
   }
-  const auto query = raw_target.find('?');
-  const auto path_part = query == std::string_view::npos ? raw_target : raw_target.substr(0, query);
+  const auto [path_part, raw_query] = split_target(raw_target);
   auto decoded = percent_decode(path_part);
   if (!decoded) {
     return tl::unexpected(decoded.error());
@@ -156,7 +191,11 @@ struct ParsedTarget {
   ParsedTarget parsed;
   parsed.trailing_slash = decoded->ends_with('/');
   parsed.decoded = std::move(*decoded);
-  for (const auto &segment : *segments) {
+  // Location ヘッダは field-value でなければ httplib に黙って捨てられる。制御文字や
+  // 非 ASCII が素通りしないよう、クエリも percent-encode してから持ち回る。
+  parsed.query_suffix = percent_encode(raw_query, is_query_byte);
+  parsed.segments = std::move(*segments);
+  for (const auto &segment : parsed.segments) {
     parsed.relative /= util::from_utf8(segment);
   }
   if (parsed.relative.has_root_path()) {
@@ -313,7 +352,8 @@ Result<ResolvedRequest> resolve_request_path(const std::filesystem::path &root,
   }
   if (*as_dir) {
     return ResolvedRequest{.kind = ResolveKind::Redirect,
-                           .location = make_redirect_location(parsed->decoded)};
+                           .location =
+                               make_redirect_location(parsed->segments) + parsed->query_suffix};
   }
   return ResolvedRequest{.kind = ResolveKind::NotFound};
 }
@@ -333,9 +373,7 @@ constexpr std::string_view kPage405 =
 constexpr std::string_view kPage500 = "<!DOCTYPE html><title>500</title><p>配信できません</p>";
 
 [[nodiscard]] bool is_reload_target(std::string_view raw_target) {
-  const auto query = raw_target.find('?');
-  const auto path_part = query == std::string_view::npos ? raw_target : raw_target.substr(0, query);
-  auto decoded = percent_decode(path_part);
+  auto decoded = percent_decode(split_target(raw_target).path_part);
   if (!decoded) {
     return false;
   }
@@ -451,6 +489,19 @@ void handle_get(GenerationStore &store, const httplib::Request &req, httplib::Re
   return options.port;
 }
 
+[[nodiscard]] std::string describe_exception(std::exception_ptr captured) {
+  if (!captured) {
+    return "不明な例外";
+  }
+  try {
+    std::rethrow_exception(captured);
+  } catch (const std::exception &ex) {
+    return ex.what();
+  } catch (...) {
+    return "不明な例外";
+  }
+}
+
 void install_handlers(httplib::Server &svr, GenerationStore &store, bool inject_reload) {
   // Serve GET/HEAD here so long decoded paths are not limited by
   // CPPHTTPLIB_REGEX_ROUTE_PATH_MAX_LENGTH on RegexMatcher routes.
@@ -468,8 +519,12 @@ void install_handlers(httplib::Server &svr, GenerationStore &store, bool inject_
         send_html(res, httplib::StatusCode::MethodNotAllowed_405, kPage405);
         return httplib::Server::HandlerResponse::Handled;
       });
+  // 例外は 500 応答へ変換するが、原因を捨てない。捨てると、どのパスの配信で何が
+  // 起きたのかを開発者が知る手段がなくなる。
   svr.set_exception_handler(
-      [](const httplib::Request &, httplib::Response &res, std::exception_ptr) {
+      [](const httplib::Request &req, httplib::Response &res, std::exception_ptr captured) {
+        std::cerr << std::format("{}: 配信中に例外が発生しました: {}\n", req.target,
+                                 describe_exception(captured));
         send_html(res, httplib::StatusCode::InternalServerError_500, kPage500);
       });
 }
@@ -480,6 +535,9 @@ struct HttpServer::Impl {
   httplib::Server svr;
   std::thread listen_thread;
   std::atomic<bool> listen_ok{true};
+  // listen_thread だけが書き、join 後にだけ読む。join が happens-before を作る。
+  std::string listen_error;
+  std::string host;
   std::uint16_t port = 0;
 };
 
@@ -514,16 +572,23 @@ Result<HttpServer> HttpServer::start(GenerationStore &store, const HttpServerOpt
   if (!bound) {
     return tl::unexpected(bound.error());
   }
+  impl->host = options.host;
   impl->port = *bound;
 
   auto *svr = &impl->svr;
   auto *listen_ok = &impl->listen_ok;
-  impl->listen_thread = std::thread([svr, listen_ok]() {
+  auto *listen_error = &impl->listen_error;
+  impl->listen_thread = std::thread([svr, listen_ok, listen_error]() {
+    // thread 境界を越えられない例外を失敗状態へ変換し、join 後に呼び出し側の Result で返す。
     try {
       listen_ok->store(svr->listen_after_bind());
     } catch (...) {
+      *listen_error = describe_exception(std::current_exception());
       listen_ok->store(false);
+      // stop() は最後に is_decommissioned を false へ戻す。wait_until_ready() が見る
+      // のはこのフラグなので、decommission() を後から呼ばないと待ち側が抜けられない。
       svr->stop();
+      svr->decommission();
     }
   });
 
@@ -532,6 +597,11 @@ Result<HttpServer> HttpServer::start(GenerationStore &store, const HttpServerOpt
     svr->stop();
     if (impl->listen_thread.joinable()) {
       impl->listen_thread.join();
+    }
+    if (!impl->listen_error.empty()) {
+      return tl::unexpected(
+          make_error(ErrorCode::Io, std::format("{}:{}: 待ち受けを開始できません: {}", impl->host,
+                                                impl->port, impl->listen_error)));
     }
     return tl::unexpected(bind_error(options));
   }
@@ -553,7 +623,14 @@ Result<void> HttpServer::wait() {
     impl_->listen_thread.join();
   }
   if (impl_ && !impl_->listen_ok.load()) {
-    return tl::unexpected(make_error(ErrorCode::Io, "HTTP サーバーの待ち受けが失敗しました"));
+    if (!impl_->listen_error.empty()) {
+      return tl::unexpected(
+          make_error(ErrorCode::Io, std::format("{}:{}: HTTP サーバーの待ち受けが失敗しました: {}",
+                                                impl_->host, impl_->port, impl_->listen_error)));
+    }
+    return tl::unexpected(
+        make_error(ErrorCode::Io, std::format("{}:{}: HTTP サーバーの待ち受けが失敗しました",
+                                              impl_->host, impl_->port)));
   }
   return {};
 }

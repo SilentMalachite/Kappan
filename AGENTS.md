@@ -153,7 +153,10 @@ LP を特別扱いしない。**front matter の `layout:` がテンプレート
 
 - 内部の想定内エラーは **`tl::expected<T, Error>`** を返す。例外を投げない
 - `Error` は `{ ErrorCode code; std::string message; std::optional<std::filesystem::path> where; }`
-- 例外を捕捉してよいのは `main.cpp` の最上位のみ
+- 例外を捕捉してよいのは `main.cpp` の最上位、または例外を投げる外部ライブラリとの直近境界のみ。
+  後者では `tl::expected<T, Error>` かプロトコルの失敗応答へ変換する。例外を呼び出し元へ
+  伝播できない worker thread の入口では、失敗状態へ変換し、join 後に `tl::expected<T, Error>`
+  で返すためだけに捕捉できる。例外を握りつぶして処理を継続しない
 - **エラーメッセージは必ず「どのファイルの、何が、どうダメか」を含める**
   - 悪い例: `parse error`
   - 良い例: `content/posts/2026-01-01-hello.md:3 front matter の 'date' が日付として解釈できません: '2026-13-01'`
