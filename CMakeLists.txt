@@ -60,7 +60,8 @@ add_library(
   src/output/assets.cpp
   src/serve/watch.cpp
   src/serve/publish.cpp
-  src/serve/http.cpp)
+  src/serve/http.cpp
+  src/serve/run.cpp)
 add_library(kappan::lib ALIAS kappan_lib)
 
 configure_file(

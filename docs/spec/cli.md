@@ -1,7 +1,5 @@
 # CLI
 
-`serve` は後のフェーズで足す。
-
 ## 共通
 
 ```
@@ -29,6 +27,23 @@ kappan build --source <site-root> --out <dir> [--drafts] [--force]
 - 書き出し前に `--out` を空にする。`--out` がソース根と同じ、またはソースが `--out` の内側なら `ErrorCode::Cli`。
 - `--out` が空でなく、kappan の出力先である印（`.kappan-out`）も無い場合は、**何も消さずに** `ErrorCode::Cli` で拒否する。`--force` を付けたときだけ消す。`--force` は上の 2 つの判定には効かない（ソースは常に守る）。
 - 詳細は [output.md](output.md)。
+
+## `kappan serve`
+
+生成結果を loopback HTTP で配信する。`--watch` は後のフェーズで足す。
+
+```
+kappan serve --source <site-root> [--host 127.0.0.1] [--port 8080] [--drafts]
+```
+
+- `--source` は必須。`site.yaml` のあるディレクトリ。
+- `--host` の既定値は `127.0.0.1`。明示指定なしに LAN へ公開しない。
+- `--port` の既定値は 8080。CLI 上の範囲は `1..65535`。
+- `--drafts` が無いとき `draft: true` の記事は出さない。
+- 初回のサイト生成に失敗したら待ち受けせず、エラーを報告して非 0 で終了する。
+- bind に失敗したら host と port を含む `ErrorCode::Io` で非 0 終了する。
+- `Ctrl-C`（SIGINT、および SIGTERM）で待ち受けを止め、HTTP thread を join し、一時 workspace を回収する。signal handler は停止フラグを立てるだけであり、stop・ログ・filesystem・mutex は呼ばない。
+- `serve` は `<source>/_site` を作らない・変更しない。生成物は OS の一時ディレクトリへ書く。
 
 ## `kappan new`
 

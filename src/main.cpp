@@ -2,6 +2,7 @@
 
 #include "content/build.hpp"
 #include "content/scaffold.hpp"
+#include "serve/run.hpp"
 #include "util/path.hpp"
 
 #include <kappan/site.hpp>
@@ -9,6 +10,7 @@
 #include <CLI/CLI.hpp>
 #include <spdlog/spdlog.h>
 
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -32,6 +34,18 @@ int main(int argc, char **argv) {
     bool force = false;
     build->add_flag("--force", force, "kappan の出力先でない非空ディレクトリでも消す");
 
+    std::filesystem::path serve_source;
+    std::string serve_host{"127.0.0.1"};
+    std::uint16_t serve_port = 8080;
+    bool serve_drafts = false;
+    auto *serve = app.add_subcommand("serve", "生成結果をローカルで配信する");
+    serve->add_option("--source", serve_source, "サイト根ディレクトリ（site.yaml）")->required();
+    serve->add_option("--host", serve_host, "待ち受けホスト")->capture_default_str();
+    serve->add_option("--port", serve_port, "待ち受けポート")
+        ->capture_default_str()
+        ->check(CLI::Range(1, 65535));
+    serve->add_flag("--drafts", serve_drafts, "下書きを含める");
+
     std::filesystem::path new_dir;
     auto *new_cmd = app.add_subcommand("new", "サイトの骨格を作る");
     new_cmd->add_option("dir", new_dir, "作成するディレクトリ")->required();
@@ -53,6 +67,19 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
       }
       spdlog::debug("wrote {} pages to {}", result.pages_written, kappan::util::to_utf8(out));
+    }
+    if (serve->parsed()) {
+      const kappan::serve::ServeOptions options{
+          .source = serve_source,
+          .host = serve_host,
+          .port = serve_port,
+          .drafts = serve_drafts ? kappan::DraftPolicy::Include : kappan::DraftPolicy::Exclude,
+      };
+      const auto result = kappan::serve::run(options);
+      if (!result) {
+        spdlog::error("{}", result.error().message);
+        return EXIT_FAILURE;
+      }
     }
     if (new_cmd->parsed()) {
       const auto created = kappan::content::create_site(new_dir);
