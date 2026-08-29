@@ -322,4 +322,30 @@ bool requires_full_publish(std::span<const SourceChange> changes) {
   return false;
 }
 
+WatchState::WatchState(SourceSnapshot initial)
+    : published_(std::move(initial)), observed_(published_), attempted_(published_) {}
+
+void WatchState::observe(SourceSnapshot latest) { observed_ = std::move(latest); }
+
+bool WatchState::should_attempt() const {
+  return observed_ != published_ && (retry_pending_ || observed_ != attempted_);
+}
+
+WatchAttempt WatchState::begin_attempt() {
+  attempted_ = observed_;
+  retry_pending_ = false;
+  return WatchAttempt{
+      .baseline = published_,
+      .target = attempted_,
+      .changes = diff_snapshots(published_, attempted_),
+  };
+}
+
+void WatchState::mark_activated(const SourceSnapshot &published) { published_ = published; }
+
+void WatchState::mark_source_changed(SourceSnapshot latest) {
+  observed_ = std::move(latest);
+  retry_pending_ = true;
+}
+
 } // namespace kappan::serve

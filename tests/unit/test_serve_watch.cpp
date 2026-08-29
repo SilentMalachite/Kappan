@@ -193,3 +193,105 @@ TEST_CASE("requires_full_publish is true for non-static changes only", "[serve][
   REQUIRE(kappan::serve::requires_full_publish(mixed));
   REQUIRE_FALSE(kappan::serve::requires_full_publish({}));
 }
+
+TEST_CASE("WatchState retries only on new observe or source_changed", "[serve][watch]") {
+  using kappan::serve::ChangeKind;
+  using kappan::serve::WatchKind;
+
+  const auto root = std::filesystem::temp_directory_path() / "kappan-serve-watch-state";
+  std::filesystem::remove_all(root);
+
+  write_file(root / "site.yaml", "title: WatchState\n");
+  write_file(root / "content" / kappan::util::from_utf8("記事.md"), "# 初版\n");
+  write_file(root / "templates" / "post.html", "<p>{{ content }}</p>\n");
+  write_file(root / "static" / "a.css", "body{}\n");
+
+  auto initial = kappan::serve::snapshot_source(root);
+  REQUIRE(initial);
+
+  kappan::serve::WatchState state(*initial);
+  REQUIRE_FALSE(state.should_attempt());
+
+  state.observe(*initial);
+  REQUIRE_FALSE(state.should_attempt());
+
+  write_file(root / "content" / kappan::util::from_utf8("記事.md"), "# 変更1\n");
+  auto content_v1 = kappan::serve::snapshot_source(root);
+  REQUIRE(content_v1);
+  state.observe(*content_v1);
+  REQUIRE(state.should_attempt());
+
+  auto attempt1 = state.begin_attempt();
+  REQUIRE(attempt1.baseline == *initial);
+  REQUIRE(attempt1.target == *content_v1);
+  REQUIRE(attempt1.changes == kappan::serve::diff_snapshots(*initial, *content_v1));
+  REQUIRE(kappan::serve::requires_full_publish(attempt1.changes));
+  REQUIRE(has_change(attempt1.changes, WatchKind::Content, ChangeKind::Modified,
+                     kappan::util::from_utf8("content/記事.md")));
+  REQUIRE_FALSE(state.should_attempt());
+
+  // stable failure: published は進まず、同じ snapshot では連続 retry しない
+  REQUIRE_FALSE(state.should_attempt());
+
+  // mid-build の追加保存: 失敗済み attempted ではなく published からの差分になる
+  write_file(root / "content" / "extra.md", "# 追加\n");
+  auto content_v2 = kappan::serve::snapshot_source(root);
+  REQUIRE(content_v2);
+  state.mark_source_changed(*content_v2);
+  REQUIRE(state.should_attempt());
+
+  auto attempt2 = state.begin_attempt();
+  REQUIRE(attempt2.baseline == *initial);
+  REQUIRE(attempt2.target == *content_v2);
+  REQUIRE(attempt2.changes == kappan::serve::diff_snapshots(*initial, *content_v2));
+  REQUIRE_FALSE(attempt2.changes == kappan::serve::diff_snapshots(*content_v1, *content_v2));
+  REQUIRE(has_change(attempt2.changes, WatchKind::Content, ChangeKind::Modified,
+                     kappan::util::from_utf8("content/記事.md")));
+  REQUIRE(has_change(attempt2.changes, WatchKind::Content, ChangeKind::Added,
+                     std::filesystem::path{"content"} / "extra.md"));
+  REQUIRE(kappan::serve::requires_full_publish(attempt2.changes));
+  REQUIRE_FALSE(state.should_attempt());
+
+  // full build failure のあと Static だけ保存しても、失敗した Content 差分が残る
+  write_file(root / "static" / "a.css", "body{color:red}\n");
+  auto with_static = kappan::serve::snapshot_source(root);
+  REQUIRE(with_static);
+  state.observe(*with_static);
+  REQUIRE(state.should_attempt());
+
+  auto attempt3 = state.begin_attempt();
+  REQUIRE(attempt3.baseline == *initial);
+  REQUIRE(attempt3.target == *with_static);
+  REQUIRE(attempt3.changes == kappan::serve::diff_snapshots(*initial, *with_static));
+  REQUIRE(has_change(attempt3.changes, WatchKind::Content, ChangeKind::Modified,
+                     kappan::util::from_utf8("content/記事.md")));
+  REQUIRE(has_change(attempt3.changes, WatchKind::Content, ChangeKind::Added,
+                     std::filesystem::path{"content"} / "extra.md"));
+  REQUIRE(has_change(attempt3.changes, WatchKind::Static, ChangeKind::Modified,
+                     std::filesystem::path{"static"} / "a.css"));
+  REQUIRE(kappan::serve::requires_full_publish(attempt3.changes));
+
+  // mark_activated のときだけ published が進む
+  state.mark_activated(attempt3.target);
+  REQUIRE_FALSE(state.should_attempt());
+
+  state.observe(*with_static);
+  REQUIRE_FALSE(state.should_attempt());
+
+  write_file(root / "static" / "a.css", "body{color:blue}\n");
+  auto static_only = kappan::serve::snapshot_source(root);
+  REQUIRE(static_only);
+  state.observe(*static_only);
+  REQUIRE(state.should_attempt());
+
+  auto attempt4 = state.begin_attempt();
+  REQUIRE(attempt4.baseline == *with_static);
+  REQUIRE(attempt4.target == *static_only);
+  REQUIRE(attempt4.changes == kappan::serve::diff_snapshots(*with_static, *static_only));
+  REQUIRE_FALSE(kappan::serve::requires_full_publish(attempt4.changes));
+
+  state.mark_activated(attempt4.target);
+  REQUIRE_FALSE(state.should_attempt());
+
+  std::filesystem::remove_all(root);
+}
