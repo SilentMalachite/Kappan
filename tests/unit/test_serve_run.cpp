@@ -8,9 +8,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -25,6 +27,65 @@ std::atomic<int> g_temp_seq{0};
                      std::chrono::steady_clock::now().time_since_epoch().count(),
                      g_temp_seq.fetch_add(1));
 }
+
+class ScopedTempDirectory {
+public:
+  ScopedTempDirectory() : root_(unique_temp("kappan-serve-test-tmp")) {
+    std::error_code ec;
+    std::filesystem::create_directories(root_, ec);
+    if (ec) {
+      return;
+    }
+    if (const char *current = std::getenv(kTempVariable)) {
+      previous_ = current;
+    }
+    active_ = set_variable(root_.string());
+  }
+
+  ScopedTempDirectory(const ScopedTempDirectory &) = delete;
+  ScopedTempDirectory &operator=(const ScopedTempDirectory &) = delete;
+
+  ~ScopedTempDirectory() {
+    if (active_) {
+      if (previous_) {
+        (void)set_variable(*previous_);
+      } else {
+        clear_variable();
+      }
+    }
+    std::error_code ec;
+    std::filesystem::remove_all(root_, ec);
+  }
+
+  [[nodiscard]] bool ready() const { return active_; }
+
+private:
+#ifdef _WIN32
+  static constexpr const char *kTempVariable = "TMP";
+#else
+  static constexpr const char *kTempVariable = "TMPDIR";
+#endif
+
+  [[nodiscard]] static bool set_variable(const std::string &value) {
+#ifdef _WIN32
+    return _putenv_s(kTempVariable, value.c_str()) == 0;
+#else
+    return setenv(kTempVariable, value.c_str(), 1) == 0;
+#endif
+  }
+
+  static void clear_variable() noexcept {
+#ifdef _WIN32
+    (void)_putenv_s(kTempVariable, "");
+#else
+    (void)unsetenv(kTempVariable);
+#endif
+  }
+
+  std::filesystem::path root_;
+  std::optional<std::string> previous_;
+  bool active_ = false;
+};
 
 [[nodiscard]] std::filesystem::path fixtures_dir() {
   return std::filesystem::path(__FILE__).parent_path().parent_path() / "fixtures";
@@ -108,6 +169,8 @@ void write_file(const std::filesystem::path &path, std::string_view content) {
 } // namespace
 
 TEST_CASE("ServeSession serves a Japanese site and reclaims the workspace", "[serve][run]") {
+  const ScopedTempDirectory temp;
+  REQUIRE(temp.ready());
   const auto source = make_japanese_site();
   const auto before = store_workspaces();
   std::filesystem::path workspace;
@@ -162,6 +225,8 @@ TEST_CASE("ServeSession serves a Japanese site and reclaims the workspace", "[se
 }
 
 TEST_CASE("ServeSession does not bind when the first publish fails", "[serve][run]") {
+  const ScopedTempDirectory temp;
+  REQUIRE(temp.ready());
   const auto source = make_bad_front_matter_site();
   const auto before = store_workspaces();
 
@@ -178,6 +243,8 @@ TEST_CASE("ServeSession does not bind when the first publish fails", "[serve][ru
 }
 
 TEST_CASE("ServeSession bind failure includes host and port", "[serve][run]") {
+  const ScopedTempDirectory temp;
+  REQUIRE(temp.ready());
   const auto source = make_japanese_site();
   const auto before = store_workspaces();
   const kappan::serve::ServeOptions options{
@@ -226,6 +293,8 @@ TEST_CASE("ServeOptions watch defaults to off with 100ms poll and 150ms quiet", 
 }
 
 TEST_CASE("ServeSession watch exposes reload and reclaims workspace", "[serve][run]") {
+  const ScopedTempDirectory temp;
+  REQUIRE(temp.ready());
   const auto source = make_japanese_site();
   const auto before = store_workspaces();
   std::filesystem::path workspace;
@@ -285,6 +354,8 @@ TEST_CASE("ServeSession watch exposes reload and reclaims workspace", "[serve][r
 }
 
 TEST_CASE("ServeSession watch rebuilds Japanese content after a save", "[serve][run]") {
+  const ScopedTempDirectory temp;
+  REQUIRE(temp.ready());
   const auto source = make_japanese_site();
   const auto before = store_workspaces();
   std::filesystem::path workspace;
