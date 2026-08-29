@@ -57,7 +57,8 @@ add_library(
   src/output/xml.cpp
   src/output/write.cpp
   src/output/assets.cpp
-  src/serve/watch.cpp)
+  src/serve/watch.cpp
+  src/serve/publish.cpp)
 add_library(kappan::lib ALIAS kappan_lib)
 
 configure_file(
