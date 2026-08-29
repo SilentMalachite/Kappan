@@ -236,6 +236,20 @@ struct AppliedStatic {
   bool placed = false;
 };
 
+[[nodiscard]] bool replaces_planned_removal(const std::filesystem::path &dest,
+                                            std::span<const StaticPlan> plans) {
+  for (const auto &planned : plans) {
+    if (planned.change_kind != ChangeKind::Removed || !planned.dest_existed) {
+      continue;
+    }
+    std::error_code ec;
+    if (std::filesystem::equivalent(planned.dest, dest, ec) && !ec) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void prune_empty_ancestors(const std::filesystem::path &root, std::filesystem::path dir) noexcept {
   std::error_code ec;
   while (true) {
@@ -395,7 +409,8 @@ void plan_change(const SourceChange &change, const std::filesystem::path &static
   }
   plan.dest_existed = std::filesystem::exists(*dest_st);
   const bool owned = generation.static_owned.contains(plan.key);
-  const bool generated = plan.dest_existed && !owned;
+  const bool replaces_removed = plan.dest_existed && replaces_planned_removal(plan.dest, plans);
+  const bool generated = plan.dest_existed && !owned && !replaces_removed;
 
   if (change.change_kind == ChangeKind::Removed) {
     if (!owned) {
@@ -413,6 +428,10 @@ void plan_change(const SourceChange &change, const std::filesystem::path &static
         path_error(change.relative, std::format("{}: static の出力先が生成ページと衝突します",
                                                 util::to_generic_utf8(change.relative))));
     return;
+  }
+
+  if (replaces_removed) {
+    plan.dest_existed = false;
   }
 
   auto src_st = query_status(plan.source);
@@ -586,7 +605,14 @@ std::vector<Error> GenerationStore::Impl::apply_static(std::span<const SourceCha
   std::vector<Error> errors;
   std::set<std::string> seen;
   for (const auto &change : changes) {
-    plan_change(change, static_dir, *gen, seen, plans, errors);
+    if (change.change_kind == ChangeKind::Removed) {
+      plan_change(change, static_dir, *gen, seen, plans, errors);
+    }
+  }
+  for (const auto &change : changes) {
+    if (change.change_kind != ChangeKind::Removed) {
+      plan_change(change, static_dir, *gen, seen, plans, errors);
+    }
   }
   if (!errors.empty() || plans.empty()) {
     return errors;

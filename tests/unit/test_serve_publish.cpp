@@ -307,6 +307,48 @@ TEST_CASE("apply_static adds and updates Japanese emoji assets", "[serve][publis
   std::filesystem::remove_all(source);
 }
 
+TEST_CASE("apply_static handles a case-only static rename", "[serve][publish]") {
+  const auto source = make_japanese_site();
+  const auto old_source = source / "static" / "css" / "site.css";
+  const auto new_source = source / "static" / "css" / "SITE.css";
+  write_file(old_source, "body{color:#333}\n");
+
+  auto created = kappan::serve::GenerationStore::create();
+  REQUIRE(created);
+  auto store = std::move(*created);
+  REQUIRE(store.publish({.source = source}).ok());
+  REQUIRE(store.generation() == 1);
+
+  std::filesystem::rename(old_source, new_source);
+  const auto renamed = store.apply_static(
+      std::vector<kappan::serve::SourceChange>{
+          static_change(kappan::serve::ChangeKind::Added, "static/css/SITE.css"),
+          static_change(kappan::serve::ChangeKind::Removed, "static/css/site.css"),
+      },
+      source / "static");
+  REQUIRE(renamed.empty());
+  REQUIRE(store.generation() == 2);
+
+  {
+    auto acquired = store.acquire_read();
+    REQUIRE(acquired);
+    const auto css = acquired->read_bytes(std::filesystem::path{"css"} / "SITE.css");
+    REQUIRE(css);
+    REQUIRE(as_text(*css) == "body{color:#333}\n");
+  }
+
+  std::filesystem::remove(new_source);
+  const auto removed = store.apply_static(
+      std::vector<kappan::serve::SourceChange>{
+          static_change(kappan::serve::ChangeKind::Removed, "static/css/SITE.css"),
+      },
+      source / "static");
+  REQUIRE(removed.empty());
+  REQUIRE(store.generation() == 3);
+
+  std::filesystem::remove_all(source);
+}
+
 TEST_CASE("apply_static deletes owned static outputs only", "[serve][publish]") {
   const auto source = make_japanese_site();
   auto created = kappan::serve::GenerationStore::create();
