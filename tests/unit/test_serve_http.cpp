@@ -116,7 +116,8 @@ struct TempRoot {
 
 [[nodiscard]] std::size_t count_sv(std::string_view hay, std::string_view needle) {
   std::size_t n = 0;
-  for (auto pos = hay.find(needle); pos != std::string_view::npos; pos = hay.find(needle, pos + 1)) {
+  for (auto pos = hay.find(needle); pos != std::string_view::npos;
+       pos = hay.find(needle, pos + 1)) {
     ++n;
   }
   return n;

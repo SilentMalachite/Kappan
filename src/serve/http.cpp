@@ -454,20 +454,20 @@ void handle_get(GenerationStore &store, const httplib::Request &req, httplib::Re
 void install_handlers(httplib::Server &svr, GenerationStore &store, bool inject_reload) {
   // Serve GET/HEAD here so long decoded paths are not limited by
   // CPPHTTPLIB_REGEX_ROUTE_PATH_MAX_LENGTH on RegexMatcher routes.
-  svr.set_pre_routing_handler([&store, inject_reload](const httplib::Request &req,
-                                                      httplib::Response &res) {
-    if (req.method == "GET" || req.method == "HEAD") {
-      if (inject_reload && is_reload_target(req.target)) {
-        handle_reload(store, res);
+  svr.set_pre_routing_handler(
+      [&store, inject_reload](const httplib::Request &req, httplib::Response &res) {
+        if (req.method == "GET" || req.method == "HEAD") {
+          if (inject_reload && is_reload_target(req.target)) {
+            handle_reload(store, res);
+            return httplib::Server::HandlerResponse::Handled;
+          }
+          handle_get(store, req, res, inject_reload);
+          return httplib::Server::HandlerResponse::Handled;
+        }
+        res.set_header("Allow", "GET, HEAD");
+        send_html(res, httplib::StatusCode::MethodNotAllowed_405, kPage405);
         return httplib::Server::HandlerResponse::Handled;
-      }
-      handle_get(store, req, res, inject_reload);
-      return httplib::Server::HandlerResponse::Handled;
-    }
-    res.set_header("Allow", "GET, HEAD");
-    send_html(res, httplib::StatusCode::MethodNotAllowed_405, kPage405);
-    return httplib::Server::HandlerResponse::Handled;
-  });
+      });
   svr.set_exception_handler(
       [](const httplib::Request &, httplib::Response &res, std::exception_ptr) {
         send_html(res, httplib::StatusCode::InternalServerError_500, kPage500);
