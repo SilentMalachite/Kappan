@@ -38,6 +38,7 @@ int main(int argc, char **argv) {
     std::string serve_host{"127.0.0.1"};
     std::uint16_t serve_port = 8080;
     bool serve_drafts = false;
+    bool serve_watch = false;
     auto *serve = app.add_subcommand("serve", "生成結果をローカルで配信する");
     serve->add_option("--source", serve_source, "サイト根ディレクトリ（site.yaml）")->required();
     serve->add_option("--host", serve_host, "待ち受けホスト")->capture_default_str();
@@ -45,6 +46,7 @@ int main(int argc, char **argv) {
         ->capture_default_str()
         ->check(CLI::Range(1, 65535));
     serve->add_flag("--drafts", serve_drafts, "下書きを含める");
+    serve->add_flag("--watch", serve_watch, "ソースの変更を監視して再生成する");
 
     std::filesystem::path new_dir;
     auto *new_cmd = app.add_subcommand("new", "サイトの骨格を作る");
@@ -74,6 +76,7 @@ int main(int argc, char **argv) {
           .host = serve_host,
           .port = serve_port,
           .drafts = serve_drafts ? kappan::DraftPolicy::Include : kappan::DraftPolicy::Exclude,
+          .watch = serve_watch,
       };
       const auto result = kappan::serve::run(options);
       if (!result) {

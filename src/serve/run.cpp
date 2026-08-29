@@ -2,9 +2,11 @@
 
 #include "serve/http.hpp"
 #include "serve/publish.hpp"
+#include "serve/watch.hpp"
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <chrono>
 #include <csignal>
 #include <optional>
@@ -57,13 +59,83 @@ private:
 #endif
 };
 
+void wait_poll_interval(std::stop_token stop, std::chrono::milliseconds interval) {
+  if (interval <= std::chrono::milliseconds{0}) {
+    std::this_thread::yield();
+    return;
+  }
+  auto remaining = interval;
+  while (remaining > std::chrono::milliseconds{0} && !stop.stop_requested()) {
+    const auto step = std::min(remaining, std::chrono::milliseconds{50});
+    std::this_thread::sleep_for(step);
+    remaining -= step;
+  }
+}
+
+void poll_watch(GenerationStore &store, WatchState &state, WatchDebounce &debounce,
+                const ServeOptions &options) {
+  auto snap = snapshot_source(options.source);
+  if (!snap) {
+    spdlog::error("{}", snap.error().message);
+    return;
+  }
+  state.observe(*snap);
+  if (!state.should_attempt()) {
+    return;
+  }
+  if (!debounce.quiet_elapsed(std::chrono::steady_clock::now(), *snap)) {
+    return;
+  }
+  const auto attempt = state.begin_attempt();
+  apply_watch_attempt(state, store, attempt, {.source = options.source, .drafts = options.drafts});
+}
+
+void run_watch_loop(std::stop_token stop, GenerationStore &store, SourceSnapshot published,
+                    ServeOptions options) {
+  WatchDebounce debounce{options.quiet_period};
+  (void)debounce.quiet_elapsed(std::chrono::steady_clock::now(), published);
+  WatchState state{std::move(published)};
+  while (!stop.stop_requested()) {
+    poll_watch(store, state, debounce, options);
+    wait_poll_interval(stop, options.poll_interval);
+  }
+}
+
 } // namespace
 
 struct ServeSession::Impl {
   GenerationStore store;
   std::optional<HttpServer> server;
+  std::jthread watch;
 
   explicit Impl(GenerationStore created) : store(std::move(created)) {}
+  Impl(const Impl &) = delete;
+  Impl &operator=(const Impl &) = delete;
+
+  ~Impl() {
+    request_stop();
+    (void)join();
+  }
+
+  void request_stop() {
+    if (server) {
+      server->request_stop();
+    }
+    if (watch.joinable()) {
+      watch.request_stop();
+    }
+  }
+
+  Result<void> join() {
+    Result<void> http_result{};
+    if (server) {
+      http_result = server->wait();
+    }
+    if (watch.joinable()) {
+      watch.join();
+    }
+    return http_result;
+  }
 };
 
 ServeSession::ServeSession(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
@@ -83,11 +155,20 @@ Result<ServeSession> ServeSession::start(const ServeOptions &options) {
     return tl::unexpected(publish_failure(attempt));
   }
 
-  auto server = HttpServer::start(impl->store, {.host = options.host, .port = options.port});
+  auto server = HttpServer::start(
+      impl->store, {.host = options.host, .port = options.port, .inject_reload = options.watch});
   if (!server) {
     return tl::unexpected(server.error());
   }
   impl->server.emplace(std::move(*server));
+
+  if (options.watch) {
+    auto *store = &impl->store;
+    impl->watch =
+        std::jthread([store, published = attempt.snapshot, options](std::stop_token stop) {
+          run_watch_loop(stop, *store, published, options);
+        });
+  }
   return ServeSession{std::move(impl)};
 }
 
@@ -101,16 +182,16 @@ std::uint16_t ServeSession::port() const {
 bool ServeSession::running() const { return impl_ && impl_->server && impl_->server->running(); }
 
 void ServeSession::request_stop() {
-  if (impl_ && impl_->server) {
-    impl_->server->request_stop();
+  if (impl_) {
+    impl_->request_stop();
   }
 }
 
 Result<void> ServeSession::wait() {
-  if (!impl_ || !impl_->server) {
+  if (!impl_) {
     return {};
   }
-  return impl_->server->wait();
+  return impl_->join();
 }
 
 Result<void> run(const ServeOptions &options) {

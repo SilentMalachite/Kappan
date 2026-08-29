@@ -2,6 +2,7 @@
 
 #include <kappan/error.hpp>
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -62,5 +63,23 @@ private:
   SourceSnapshot attempted_;
   bool retry_pending_ = false;
 };
+
+class WatchDebounce {
+public:
+  explicit WatchDebounce(std::chrono::milliseconds quiet_period);
+  [[nodiscard]] bool quiet_elapsed(std::chrono::steady_clock::time_point now,
+                                   const SourceSnapshot &observed);
+
+private:
+  std::chrono::milliseconds quiet_period_;
+  std::optional<SourceSnapshot> last_seen_;
+  std::optional<std::chrono::steady_clock::time_point> last_change_;
+};
+
+class GenerationStore;
+struct PublishOptions;
+
+void apply_watch_attempt(WatchState &state, GenerationStore &store, const WatchAttempt &attempt,
+                         const PublishOptions &options);
 
 } // namespace kappan::serve

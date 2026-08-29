@@ -1,10 +1,15 @@
+#include "content/build.hpp"
+#include "serve/publish.hpp"
 #include "serve/watch.hpp"
 #include "util/path.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <ranges>
 #include <string>
@@ -17,6 +22,35 @@ void write_file(const std::filesystem::path &path, std::string_view content) {
   std::filesystem::create_directories(path.parent_path());
   std::ofstream out(path, std::ios::binary);
   out.write(content.data(), static_cast<std::streamsize>(content.size()));
+}
+
+std::atomic<int> g_temp_seq{0};
+
+[[nodiscard]] std::filesystem::path unique_temp(std::string_view prefix) {
+  return std::filesystem::temp_directory_path() /
+         std::format("{}-{}-{}", prefix,
+                     std::chrono::steady_clock::now().time_since_epoch().count(),
+                     g_temp_seq.fetch_add(1));
+}
+
+[[nodiscard]] std::filesystem::path fixtures_dir() {
+  return std::filesystem::path(__FILE__).parent_path().parent_path() / "fixtures";
+}
+
+[[nodiscard]] std::filesystem::path make_japanese_site() {
+  const auto dest = unique_temp("kappan-watch-src");
+  std::filesystem::remove_all(dest);
+  std::filesystem::copy(fixtures_dir() / "site-ja", dest, std::filesystem::copy_options::recursive);
+  return dest;
+}
+
+[[nodiscard]] std::string generation_text(kappan::serve::GenerationStore &store,
+                                          const std::filesystem::path &relative) {
+  auto lease = store.acquire_read();
+  REQUIRE(lease);
+  auto bytes = lease->read_bytes(relative);
+  REQUIRE(bytes);
+  return {reinterpret_cast<const char *>(bytes->data()), bytes->size()};
 }
 
 [[nodiscard]] std::filesystem::path make_watch_fixture() {
@@ -303,4 +337,328 @@ TEST_CASE("WatchState retries only on new observe or source_changed", "[serve][w
   REQUIRE_FALSE(state.should_attempt());
 
   std::filesystem::remove_all(root);
+}
+
+TEST_CASE("WatchDebounce coalesces two saves into one fire after quiet", "[serve][watch]") {
+  using ms = std::chrono::milliseconds;
+  using clock = std::chrono::steady_clock;
+
+  const auto root = unique_temp("kappan-serve-watch-debounce");
+  std::filesystem::remove_all(root);
+  write_file(root / "site.yaml", "title: 監視\n");
+  write_file(root / "content" / kappan::util::from_utf8("記事.md"), "# 初版\n");
+
+  auto snap_a = kappan::serve::snapshot_source(root);
+  REQUIRE(snap_a);
+  write_file(root / "content" / kappan::util::from_utf8("記事.md"), "# 保存1\n");
+  auto snap_b = kappan::serve::snapshot_source(root);
+  REQUIRE(snap_b);
+  write_file(root / "content" / kappan::util::from_utf8("記事.md"), "# 保存2\n");
+  auto snap_c = kappan::serve::snapshot_source(root);
+  REQUIRE(snap_c);
+
+  kappan::serve::WatchDebounce debounce{ms{150}};
+  const auto t0 = clock::time_point{};
+  REQUIRE_FALSE(debounce.quiet_elapsed(t0, *snap_a));
+  REQUIRE_FALSE(debounce.quiet_elapsed(t0 + ms{10}, *snap_b));
+  REQUIRE_FALSE(debounce.quiet_elapsed(t0 + ms{50}, *snap_c));
+  REQUIRE_FALSE(debounce.quiet_elapsed(t0 + ms{199}, *snap_c));
+  REQUIRE(debounce.quiet_elapsed(t0 + ms{200}, *snap_c));
+  REQUIRE(debounce.quiet_elapsed(t0 + ms{201}, *snap_c));
+
+  write_file(root / "content" / kappan::util::from_utf8("記事.md"), "# 保存3\n");
+  auto snap_d = kappan::serve::snapshot_source(root);
+  REQUIRE(snap_d);
+  REQUIRE_FALSE(debounce.quiet_elapsed(t0 + ms{210}, *snap_d));
+  REQUIRE(debounce.quiet_elapsed(t0 + ms{360}, *snap_d));
+
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("WatchDebounce and WatchState attempt once after quiet elapses", "[serve][watch]") {
+  using ms = std::chrono::milliseconds;
+  using clock = std::chrono::steady_clock;
+
+  const auto root = unique_temp("kappan-serve-watch-debounce-state");
+  std::filesystem::remove_all(root);
+  write_file(root / "site.yaml", "title: 監視\n");
+  write_file(root / "content" / kappan::util::from_utf8("記事.md"), "# 初版\n");
+
+  auto snap_a = kappan::serve::snapshot_source(root);
+  REQUIRE(snap_a);
+  write_file(root / "content" / kappan::util::from_utf8("記事.md"), "# 保存1\n");
+  auto snap_b = kappan::serve::snapshot_source(root);
+  REQUIRE(snap_b);
+  write_file(root / "content" / kappan::util::from_utf8("記事.md"), "# 保存2\n");
+  auto snap_c = kappan::serve::snapshot_source(root);
+  REQUIRE(snap_c);
+
+  kappan::serve::WatchState state{*snap_a};
+  kappan::serve::WatchDebounce debounce{ms{150}};
+  int attempts = 0;
+  kappan::serve::SourceSnapshot fired;
+  const auto t0 = clock::time_point{};
+  const auto feed = [&](clock::time_point now, const kappan::serve::SourceSnapshot &snap) {
+    state.observe(snap);
+    if (state.should_attempt() && debounce.quiet_elapsed(now, snap)) {
+      auto attempt = state.begin_attempt();
+      fired = attempt.target;
+      ++attempts;
+      state.mark_activated(attempt.target);
+    }
+  };
+
+  feed(t0, *snap_a);
+  feed(t0 + ms{10}, *snap_b);
+  feed(t0 + ms{50}, *snap_c);
+  REQUIRE(attempts == 0);
+  feed(t0 + ms{200}, *snap_c);
+  REQUIRE(attempts == 1);
+  REQUIRE(fired == *snap_c);
+  feed(t0 + ms{250}, *snap_c);
+  REQUIRE(attempts == 1);
+
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("apply_watch_attempt applies static-only once and activates target", "[serve][watch]") {
+  const auto source = make_japanese_site();
+  int builds = 0;
+  auto builder = [&](const std::filesystem::path &src, const std::filesystem::path &out,
+                     kappan::DraftPolicy drafts) {
+    ++builds;
+    return kappan::content::build_site(src, out, drafts, kappan::output::OutDirPolicy::Refuse);
+  };
+  auto created = kappan::serve::GenerationStore::create(std::move(builder));
+  REQUIRE(created);
+  auto store = std::move(*created);
+
+  const auto first = store.publish({.source = source});
+  REQUIRE(first.ok());
+  REQUIRE(builds == 1);
+  REQUIRE(store.generation() == 1);
+
+  kappan::serve::WatchState state{first.snapshot};
+  const auto css_rel = kappan::util::from_utf8("static/css/日本語🐙.css");
+  write_file(source / css_rel, "body{color:#333}\n");
+  auto latest = kappan::serve::snapshot_source(source);
+  REQUIRE(latest);
+  state.observe(*latest);
+  REQUIRE(state.should_attempt());
+
+  auto attempt = state.begin_attempt();
+  REQUIRE_FALSE(kappan::serve::requires_full_publish(attempt.changes));
+  kappan::serve::apply_watch_attempt(state, store, attempt, {.source = source});
+
+  REQUIRE(builds == 1);
+  REQUIRE(store.generation() == 2);
+  REQUIRE_FALSE(state.should_attempt());
+  REQUIRE(generation_text(store, kappan::util::from_utf8("css/日本語🐙.css")) ==
+          "body{color:#333}\n");
+
+  write_file(source / "content" / "index.md", "---\ntitle: ホーム\n---\n# ホーム 🐙 改訂\n");
+  auto after_content = kappan::serve::snapshot_source(source);
+  REQUIRE(after_content);
+  state.observe(*after_content);
+  REQUIRE(state.should_attempt());
+  auto next = state.begin_attempt();
+  REQUIRE(next.baseline == *latest);
+
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("apply_watch_attempt publishes full for content and mixed changes", "[serve][watch]") {
+  const auto source = make_japanese_site();
+  int builds = 0;
+  auto builder = [&](const std::filesystem::path &src, const std::filesystem::path &out,
+                     kappan::DraftPolicy drafts) {
+    ++builds;
+    return kappan::content::build_site(src, out, drafts, kappan::output::OutDirPolicy::Refuse);
+  };
+  auto created = kappan::serve::GenerationStore::create(std::move(builder));
+  REQUIRE(created);
+  auto store = std::move(*created);
+
+  const auto first = store.publish({.source = source});
+  REQUIRE(first.ok());
+  kappan::serve::WatchState state{first.snapshot};
+
+  write_file(source / "content" / "index.md", "---\ntitle: ホーム\n---\n# ホーム 🐙 改訂\n");
+  auto content_only = kappan::serve::snapshot_source(source);
+  REQUIRE(content_only);
+  state.observe(*content_only);
+  auto content_attempt = state.begin_attempt();
+  REQUIRE(kappan::serve::requires_full_publish(content_attempt.changes));
+  kappan::serve::apply_watch_attempt(state, store, content_attempt, {.source = source});
+
+  REQUIRE(builds == 2);
+  REQUIRE(store.generation() == 2);
+  REQUIRE_FALSE(state.should_attempt());
+  REQUIRE(generation_text(store, "index.html").find("ホーム 🐙 改訂") != std::string::npos);
+
+  write_file(source / "content" / "about.md", "---\ntitle: 概要\n---\n概要 改訂\n");
+  write_file(source / "static" / "a.css", "body{color:red}\n");
+  auto mixed = kappan::serve::snapshot_source(source);
+  REQUIRE(mixed);
+  state.observe(*mixed);
+  auto mixed_attempt = state.begin_attempt();
+  REQUIRE(kappan::serve::requires_full_publish(mixed_attempt.changes));
+  kappan::serve::apply_watch_attempt(state, store, mixed_attempt, {.source = source});
+
+  REQUIRE(builds == 3);
+  REQUIRE(store.generation() == 3);
+  REQUIRE(generation_text(store, "about/index.html").find("概要 改訂") != std::string::npos);
+  REQUIRE(generation_text(store, "a.css") == "body{color:red}\n");
+
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("apply_watch_attempt keeps published on static failure", "[serve][watch]") {
+  const auto source = make_japanese_site();
+  auto created = kappan::serve::GenerationStore::create();
+  REQUIRE(created);
+  auto store = std::move(*created);
+  const auto first = store.publish({.source = source});
+  REQUIRE(first.ok());
+
+  kappan::serve::WatchState state{first.snapshot};
+  write_file(source / "static" / "index.html", "<p>衝突</p>\n");
+  auto latest = kappan::serve::snapshot_source(source);
+  REQUIRE(latest);
+  state.observe(*latest);
+  auto attempt = state.begin_attempt();
+  REQUIRE_FALSE(kappan::serve::requires_full_publish(attempt.changes));
+  kappan::serve::apply_watch_attempt(state, store, attempt, {.source = source});
+
+  REQUIRE(store.generation() == 1);
+  REQUIRE_FALSE(state.should_attempt());
+  REQUIRE(generation_text(store, "index.html").find("ホーム 🐙") != std::string::npos);
+  REQUIRE(generation_text(store, "index.html").find("衝突") == std::string::npos);
+
+  write_file(source / "static" / "a.css", "body{}\n");
+  auto next_snap = kappan::serve::snapshot_source(source);
+  REQUIRE(next_snap);
+  state.observe(*next_snap);
+  auto next = state.begin_attempt();
+  REQUIRE(next.baseline == first.snapshot);
+
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("apply_watch_attempt keeps published on BuildFailed without retry", "[serve][watch]") {
+  const auto source = make_japanese_site();
+  int builds = 0;
+  auto builder = [&](const std::filesystem::path &src, const std::filesystem::path &out,
+                     kappan::DraftPolicy drafts) {
+    ++builds;
+    return kappan::content::build_site(src, out, drafts, kappan::output::OutDirPolicy::Refuse);
+  };
+  auto created = kappan::serve::GenerationStore::create(std::move(builder));
+  REQUIRE(created);
+  auto store = std::move(*created);
+  const auto first = store.publish({.source = source});
+  REQUIRE(first.ok());
+  REQUIRE(builds == 1);
+
+  kappan::serve::WatchState state{first.snapshot};
+  write_file(source / "content" / "posts" / kappan::util::from_utf8("2026-01-01-こんにちは.md"),
+             "---\ntitle: 壊した\ndate: 2026-13-01\n---\n壊れた\n");
+  auto broken = kappan::serve::snapshot_source(source);
+  REQUIRE(broken);
+  state.observe(*broken);
+  auto attempt = state.begin_attempt();
+  REQUIRE(kappan::serve::requires_full_publish(attempt.changes));
+  kappan::serve::apply_watch_attempt(state, store, attempt, {.source = source});
+
+  REQUIRE(builds == 2);
+  REQUIRE(store.generation() == 1);
+  REQUIRE_FALSE(state.should_attempt());
+  REQUIRE(generation_text(store, "index.html").find("ホーム 🐙") != std::string::npos);
+
+  state.observe(*broken);
+  REQUIRE_FALSE(state.should_attempt());
+  REQUIRE(builds == 2);
+  REQUIRE(store.generation() == 1);
+
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("apply_watch_attempt retries immediately on SourceChanged", "[serve][watch]") {
+  const auto source = make_japanese_site();
+  int builds = 0;
+  auto builder = [&](const std::filesystem::path &src, const std::filesystem::path &out,
+                     kappan::DraftPolicy drafts) {
+    auto result =
+        kappan::content::build_site(src, out, drafts, kappan::output::OutDirPolicy::Refuse);
+    ++builds;
+    if (builds == 2) {
+      write_file(src / "content" / kappan::util::from_utf8("追加.md"),
+                 "---\ntitle: 追加\n---\nbuild 中の保存\n");
+    }
+    return result;
+  };
+  auto created = kappan::serve::GenerationStore::create(std::move(builder));
+  REQUIRE(created);
+  auto store = std::move(*created);
+  const auto first = store.publish({.source = source});
+  REQUIRE(first.ok());
+  REQUIRE(builds == 1);
+
+  kappan::serve::WatchState state{first.snapshot};
+  write_file(source / "content" / "index.md", "---\ntitle: ホーム\n---\n# ホーム 🐙 改訂\n");
+  auto latest = kappan::serve::snapshot_source(source);
+  REQUIRE(latest);
+  state.observe(*latest);
+  auto attempt = state.begin_attempt();
+  kappan::serve::apply_watch_attempt(state, store, attempt, {.source = source});
+
+  REQUIRE(builds == 3);
+  REQUIRE(store.generation() == 3);
+  REQUIRE_FALSE(state.should_attempt());
+  REQUIRE(generation_text(store, "index.html").find("ホーム 🐙 改訂") != std::string::npos);
+
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("apply_watch_attempt after full failure still full-publishes a static save",
+          "[serve][watch]") {
+  const auto source = make_japanese_site();
+  int builds = 0;
+  auto builder = [&](const std::filesystem::path &src, const std::filesystem::path &out,
+                     kappan::DraftPolicy drafts) {
+    ++builds;
+    return kappan::content::build_site(src, out, drafts, kappan::output::OutDirPolicy::Refuse);
+  };
+  auto created = kappan::serve::GenerationStore::create(std::move(builder));
+  REQUIRE(created);
+  auto store = std::move(*created);
+  const auto first = store.publish({.source = source});
+  REQUIRE(first.ok());
+
+  kappan::serve::WatchState state{first.snapshot};
+  write_file(source / "content" / "posts" / kappan::util::from_utf8("2026-01-01-こんにちは.md"),
+             "---\ntitle: 壊した\ndate: 2026-13-01\n---\n壊れた\n");
+  auto broken = kappan::serve::snapshot_source(source);
+  REQUIRE(broken);
+  state.observe(*broken);
+  kappan::serve::apply_watch_attempt(state, store, state.begin_attempt(), {.source = source});
+  REQUIRE(builds == 2);
+  REQUIRE(store.generation() == 1);
+  REQUIRE_FALSE(state.should_attempt());
+
+  write_file(source / "static" / "a.css", "body{color:red}\n");
+  auto with_static = kappan::serve::snapshot_source(source);
+  REQUIRE(with_static);
+  state.observe(*with_static);
+  REQUIRE(state.should_attempt());
+  auto attempt = state.begin_attempt();
+  REQUIRE(attempt.baseline == first.snapshot);
+  REQUIRE(kappan::serve::requires_full_publish(attempt.changes));
+  kappan::serve::apply_watch_attempt(state, store, attempt, {.source = source});
+
+  REQUIRE(builds == 3);
+  REQUIRE(store.generation() == 1);
+  REQUIRE_FALSE(state.should_attempt());
+
+  std::filesystem::remove_all(source);
 }

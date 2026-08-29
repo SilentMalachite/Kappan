@@ -1,6 +1,9 @@
 #include "serve/watch.hpp"
 
+#include "serve/publish.hpp"
 #include "util/path.hpp"
+
+#include <spdlog/spdlog.h>
 
 #include <format>
 #include <fstream>
@@ -346,6 +349,66 @@ void WatchState::mark_activated(const SourceSnapshot &published) { published_ = 
 void WatchState::mark_source_changed(SourceSnapshot latest) {
   observed_ = std::move(latest);
   retry_pending_ = true;
+}
+
+WatchDebounce::WatchDebounce(std::chrono::milliseconds quiet_period)
+    : quiet_period_(quiet_period) {}
+
+bool WatchDebounce::quiet_elapsed(std::chrono::steady_clock::time_point now,
+                                  const SourceSnapshot &observed) {
+  if (!last_seen_.has_value()) {
+    last_seen_ = observed;
+    return false;
+  }
+  if (observed != *last_seen_) {
+    last_seen_ = observed;
+    last_change_ = now;
+  }
+  if (!last_change_.has_value()) {
+    return false;
+  }
+  return now - *last_change_ >= quiet_period_;
+}
+
+void apply_watch_attempt(WatchState &state, GenerationStore &store, const WatchAttempt &attempt,
+                         const PublishOptions &options) {
+  WatchAttempt current = attempt;
+  for (;;) {
+    if (!requires_full_publish(current.changes)) {
+      const auto errors = store.apply_static(current.changes, options.source / "static");
+      if (errors.empty()) {
+        state.mark_activated(current.target);
+      } else {
+        for (const auto &error : errors) {
+          spdlog::error("{}", error.message);
+        }
+      }
+      return;
+    }
+
+    const auto result = store.publish(options);
+    if (result.status == PublishStatus::Activated) {
+      state.mark_activated(result.snapshot);
+      return;
+    }
+    if (result.status == PublishStatus::BuildFailed) {
+      for (const auto &error : result.errors) {
+        spdlog::error("{}", error.message);
+      }
+      return;
+    }
+
+    auto latest = snapshot_source(options.source);
+    if (!latest) {
+      spdlog::error("{}", latest.error().message);
+      return;
+    }
+    state.mark_source_changed(std::move(*latest));
+    if (!state.should_attempt()) {
+      return;
+    }
+    current = state.begin_attempt();
+  }
 }
 
 } // namespace kappan::serve

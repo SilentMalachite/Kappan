@@ -3,6 +3,7 @@
 #include <kappan/error.hpp>
 #include <kappan/site.hpp>
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -15,6 +16,9 @@ struct ServeOptions {
   std::string host = "127.0.0.1";
   std::uint16_t port = 8080;
   DraftPolicy drafts = DraftPolicy::Exclude;
+  bool watch = false;
+  std::chrono::milliseconds poll_interval{100};
+  std::chrono::milliseconds quiet_period{150};
 };
 
 class ServeSession {

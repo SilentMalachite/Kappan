@@ -10,6 +10,7 @@
 #include <chrono>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <set>
 #include <string>
 #include <string_view>
@@ -87,6 +88,23 @@ std::atomic<int> g_temp_seq{0};
   return {};
 }
 
+void write_file(const std::filesystem::path &path, std::string_view content) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream out(path, std::ios::binary);
+  out.write(content.data(), static_cast<std::streamsize>(content.size()));
+}
+
+[[nodiscard]] bool wait_reload_body(httplib::Client &cli, std::string_view expected) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+  while (std::chrono::steady_clock::now() < deadline) {
+    const auto reload = cli.Get("/__kappan/reload");
+    if (reload && reload->status == 200 && reload->body == expected) {
+      return true;
+    }
+  }
+  return false;
+}
+
 } // namespace
 
 TEST_CASE("ServeSession serves a Japanese site and reclaims the workspace", "[serve][run]") {
@@ -121,6 +139,10 @@ TEST_CASE("ServeSession serves a Japanese site and reclaims the workspace", "[se
     REQUIRE(ja);
     REQUIRE(ja->status == 200);
     REQUIRE(ja->body.find("最初の記事です") != std::string::npos);
+
+    const auto reload = cli.Get("/__kappan/reload");
+    REQUIRE(reload);
+    REQUIRE(reload->status == 404);
 
     session.request_stop();
     session.request_stop();
@@ -193,5 +215,112 @@ TEST_CASE("run returns Io when bind fails", "[serve][run]") {
   REQUIRE(result.error().message.find("256.256.256.256") != std::string::npos);
   REQUIRE(result.error().message.find("8080") != std::string::npos);
   REQUIRE_FALSE(std::filesystem::exists(source / "_site"));
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("ServeOptions watch defaults to off with 100ms poll and 150ms quiet", "[serve][run]") {
+  const kappan::serve::ServeOptions options;
+  REQUIRE_FALSE(options.watch);
+  REQUIRE(options.poll_interval == std::chrono::milliseconds{100});
+  REQUIRE(options.quiet_period == std::chrono::milliseconds{150});
+}
+
+TEST_CASE("ServeSession watch exposes reload and reclaims workspace", "[serve][run]") {
+  const auto source = make_japanese_site();
+  const auto before = store_workspaces();
+  std::filesystem::path workspace;
+  std::uint16_t port = 0;
+
+  {
+    const kappan::serve::ServeOptions options{
+        .source = source,
+        .port = 0,
+        .watch = true,
+        .poll_interval = std::chrono::milliseconds{1},
+        .quiet_period = std::chrono::milliseconds{0},
+    };
+    auto started = kappan::serve::ServeSession::start(options);
+    REQUIRE(started);
+    auto session = std::move(*started);
+    port = session.port();
+    REQUIRE(port != 0);
+    REQUIRE(session.running());
+    REQUIRE_FALSE(std::filesystem::exists(source / "_site"));
+
+    workspace = new_workspace(before);
+    REQUIRE_FALSE(workspace.empty());
+    REQUIRE(std::filesystem::exists(workspace));
+
+    httplib::Client cli{"127.0.0.1", static_cast<int>(port)};
+    cli.set_connection_timeout(2, 0);
+    cli.set_read_timeout(2, 0);
+
+    const auto reload = cli.Get("/__kappan/reload");
+    REQUIRE(reload);
+    REQUIRE(reload->status == 200);
+    REQUIRE(reload->body == "1");
+    REQUIRE(reload->get_header_value("Cache-Control") == "no-store");
+
+    const auto home = cli.Get("/");
+    REQUIRE(home);
+    REQUIRE(home->status == 200);
+    REQUIRE(home->body.find("ホーム 🐙") != std::string::npos);
+    REQUIRE(home->body.find("fetch('/__kappan/reload', {cache: 'no-store'})") != std::string::npos);
+
+    session.request_stop();
+    session.request_stop();
+    const auto waited = session.wait();
+    REQUIRE(waited);
+    REQUIRE_FALSE(session.running());
+
+    httplib::Client stopped{"127.0.0.1", static_cast<int>(port)};
+    stopped.set_connection_timeout(1, 0);
+    const auto refused = stopped.Get("/");
+    REQUIRE_FALSE(refused);
+  }
+
+  REQUIRE_FALSE(std::filesystem::exists(workspace));
+  REQUIRE_FALSE(std::filesystem::exists(source / "_site"));
+  std::filesystem::remove_all(source);
+}
+
+TEST_CASE("ServeSession watch rebuilds Japanese content after a save", "[serve][run]") {
+  const auto source = make_japanese_site();
+  const auto before = store_workspaces();
+  std::filesystem::path workspace;
+
+  {
+    const kappan::serve::ServeOptions options{
+        .source = source,
+        .port = 0,
+        .watch = true,
+        .poll_interval = std::chrono::milliseconds{1},
+        .quiet_period = std::chrono::milliseconds{0},
+    };
+    auto started = kappan::serve::ServeSession::start(options);
+    REQUIRE(started);
+    auto session = std::move(*started);
+    workspace = new_workspace(before);
+    REQUIRE_FALSE(workspace.empty());
+
+    httplib::Client cli{"127.0.0.1", static_cast<int>(session.port())};
+    cli.set_connection_timeout(2, 0);
+    cli.set_read_timeout(2, 0);
+
+    REQUIRE(wait_reload_body(cli, "1"));
+    write_file(source / "content" / "index.md", "---\ntitle: ホーム\n---\n# ホーム 🐙 改訂\n");
+    REQUIRE(wait_reload_body(cli, "2"));
+
+    const auto home = cli.Get("/");
+    REQUIRE(home);
+    REQUIRE(home->status == 200);
+    REQUIRE(home->body.find("ホーム 🐙 改訂") != std::string::npos);
+
+    session.request_stop();
+    REQUIRE(session.wait());
+    REQUIRE_FALSE(session.running());
+  }
+
+  REQUIRE_FALSE(std::filesystem::exists(workspace));
   std::filesystem::remove_all(source);
 }
