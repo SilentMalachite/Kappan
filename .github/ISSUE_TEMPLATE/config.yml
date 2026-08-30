@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/SilentMalachite/Kappan/security/advisories/new
+    about: Please report security problems privately, never as a public issue.
+  - name: CLI and format reference
+    url: https://github.com/SilentMalachite/Kappan/tree/main/docs/spec
+    about: Check the spec first — the behaviour you hit may be intentional.

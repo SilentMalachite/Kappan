@@ -1,0 +1,87 @@
+name: Bug report
+description: Something kappan does that it should not, or fails to do
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not use this form for security problems —
+        use [private vulnerability reporting](https://github.com/SilentMalachite/Kappan/security/advisories/new) instead.
+
+        日本語での報告も歓迎します。
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `kappan --version`, or the commit if you built from source.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux x86_64
+        - Windows x64
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: input
+    id: install
+    attributes:
+      label: How did you get kappan?
+      placeholder: "Release archive / built from source with cmake --preset dev"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: The exact command you ran.
+      render: shell
+      placeholder: kappan build --source my-site --out _site
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Paste the full output, including any error message. Do not trim it.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: |
+        The smallest site that shows the problem — `site.yaml` plus the file involved.
+        Content in Japanese or with emoji is welcome and often relevant.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the existing issues
+          required: true
+        - label: I am on the latest release, or I explained why I cannot be
+          required: true

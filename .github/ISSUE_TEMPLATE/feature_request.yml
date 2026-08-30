@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest something kappan should be able to do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Kappan keeps its scope deliberately small, so please describe the problem
+        before the solution. Discussing the design before the code saves everyone time.
+
+        日本語での提案も歓迎します。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that kappan makes hard or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: Sketch the behaviour. If it touches front matter, `site.yaml`, or the CLI, show the syntax you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Including working around it in a site-local template, or outside kappan entirely.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This does not require a new third-party dependency, or I explained why one is worth it
+        - label: I read the relevant page under docs/spec/
