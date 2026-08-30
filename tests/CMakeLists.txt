@@ -22,6 +22,7 @@ add_executable(
   golden/test_golden.cpp)
 target_link_libraries(kappan_tests PRIVATE kappan_lib Catch2::Catch2WithMain httplib::httplib)
 target_include_directories(kappan_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(kappan_tests PRIVATE KAPPAN_EXPECTED_VERSION="${PROJECT_VERSION}")
 kappan_set_warnings(kappan_tests)
 
 include(Catch)

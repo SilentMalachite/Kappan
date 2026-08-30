@@ -10,6 +10,17 @@ if(WIN32 AND NOT MSVC)
     "Windows SDK 依存のヘッダも通らない")
 endif()
 
+# vcpkg.json の version-semver は project(VERSION) と同じでなければならない。
+# 片方だけ上げたままリリースすると、配布物と manifest のバージョンが食い違う。
+file(READ ${CMAKE_SOURCE_DIR}/vcpkg.json KAPPAN_VCPKG_MANIFEST)
+string(JSON KAPPAN_VCPKG_VERSION GET "${KAPPAN_VCPKG_MANIFEST}" "version-semver")
+if(NOT KAPPAN_VCPKG_VERSION STREQUAL PROJECT_VERSION)
+  message(
+    FATAL_ERROR
+    "vcpkg.json の version-semver (${KAPPAN_VCPKG_VERSION}) が "
+    "project(kappan VERSION ...) (${PROJECT_VERSION}) と一致しません。両方を揃えること")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
