@@ -12,7 +12,7 @@ description: 日本語と絵文字 🐙 を含むサイト
 | キー | 型 | 既定 | 備考 |
 |---|---|---|---|
 | `title` | string | （必須） | 欠落・非スカラーは行番号付き `ErrorCode::Config` |
-| `url` | string | `""` | 空でなければ `sitemap.xml` と `feed.xml` の絶対 URL に使う。空ならどちらも出さない |
+| `url` | string | `""` | 空でなければ `sitemap.xml` と `feed.xml` の絶対 URL に使う。空ならどちらも出さない。`http://` / `https://` で始まりホストを持つ絶対 URL のみ受け付け、それ以外は行番号付き `ErrorCode::Config` |
 | `language` | string | `ja` | |
 | `description` | string | `""` | |
 | `pagination.posts_per_page` | int | `10` | `0` は全件 1 ページ。負は行番号付き `ErrorCode::Config` |

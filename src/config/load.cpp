@@ -6,6 +6,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <format>
+#include <string_view>
 
 namespace kappan::config {
 namespace {
@@ -65,6 +66,23 @@ namespace {
   return node.Scalar();
 }
 
+// site.url は sitemap / feed / OGP の絶対 URL の基点になる。相対値やスキーム無しを
+// 通すと、壊れた URL のまま出力してしまうため、ここで境界を閉じる。
+[[nodiscard]] bool is_absolute_http_url(std::string_view url) {
+  constexpr std::string_view http{"http://"};
+  constexpr std::string_view https{"https://"};
+  std::string_view host;
+  if (url.starts_with(https)) {
+    host = url.substr(https.size());
+  } else if (url.starts_with(http)) {
+    host = url.substr(http.size());
+  } else {
+    return false;
+  }
+  // ホストが空、または直後が '/' '?' '#' のものはホスト無しとして拒否する。
+  return !host.empty() && host.find_first_of("/?#") != 0;
+}
+
 } // namespace
 
 Result<Config> load(const std::filesystem::path &site_yaml) {
@@ -94,6 +112,14 @@ Result<Config> load(const std::filesystem::path &site_yaml) {
   auto url = optional_scalar(*root, "url", site_yaml, "");
   if (!url) {
     return tl::unexpected(url.error());
+  }
+  if (!url->empty() && !is_absolute_http_url(*url)) {
+    const int line = file_line((*root)["url"].Mark());
+    return tl::unexpected(make_error(
+        ErrorCode::Config,
+        std::format("{}:{} キー 'url' は http:// または https:// で始まる絶対 URL である必要があります",
+                    util::to_generic_utf8(site_yaml), line),
+        site_yaml, line));
   }
   auto language = optional_scalar(*root, "language", site_yaml, "ja");
   if (!language) {

@@ -3,8 +3,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <filesystem>
 #include <fstream>
+#include <string>
 
 namespace {
 
@@ -100,4 +102,60 @@ TEST_CASE("load rejects a sequence title") {
   REQUIRE(result.error().code == kappan::ErrorCode::Config);
   REQUIRE(result.error().line.has_value());
   std::filesystem::remove(path);
+}
+
+TEST_CASE("load accepts an empty url") {
+  const auto path = std::filesystem::temp_directory_path() / "kappan-site-url-empty.yaml";
+  {
+    std::ofstream out(path, std::ios::binary);
+    out << "title: URLなし\n";
+  }
+  const auto result = kappan::config::load(path);
+  REQUIRE(result);
+  REQUIRE(result->url.empty());
+  std::filesystem::remove(path);
+}
+
+TEST_CASE("load rejects a url that is not an absolute http URL") {
+  struct Case {
+    const char *name;
+    const char *url;
+  };
+  const auto cases = std::to_array<Case>({{"kappan-site-url-bare", "example.com"},
+                                          {"kappan-site-url-relative", "/blog"},
+                                          {"kappan-site-url-scheme-only", "https://"},
+                                          {"kappan-site-url-no-host", "https:///blog"},
+                                          {"kappan-site-url-other-scheme", "ftp://example.com"}});
+  for (const auto &item : cases) {
+    CAPTURE(item.url);
+    const auto path = std::filesystem::temp_directory_path() / (std::string{item.name} + ".yaml");
+    {
+      std::ofstream out(path, std::ios::binary);
+      out << "title: サイト\nurl: " << item.url << "\n";
+    }
+    const auto result = kappan::config::load(path);
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().code == kappan::ErrorCode::Config);
+    REQUIRE(result.error().line.has_value());
+    REQUIRE(*result.error().line == 2);
+    REQUIRE(result.error().message.find("url") != std::string::npos);
+    std::filesystem::remove(path);
+  }
+}
+
+TEST_CASE("load accepts http and https absolute urls") {
+  const auto cases = std::to_array<const char *>(
+      {"https://example.com", "http://example.com", "https://example.com/blog"});
+  for (const auto *url : cases) {
+    CAPTURE(url);
+    const auto path = std::filesystem::temp_directory_path() / "kappan-site-url-ok.yaml";
+    {
+      std::ofstream out(path, std::ios::binary);
+      out << "title: サイト\nurl: " << url << "\n";
+    }
+    const auto result = kappan::config::load(path);
+    REQUIRE(result);
+    REQUIRE(result->url == url);
+    std::filesystem::remove(path);
+  }
 }
