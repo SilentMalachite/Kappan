@@ -27,6 +27,7 @@ The root of the JSON handed to inja:
     "description": "...",
     "image": "/images/og.svg",
     "sections": [],
+    "generated_listing": false,
     "og": {
       "title": "こんにちは — 活版ブログ",
       "description": "...",
@@ -59,7 +60,8 @@ The landing and OGP variables are below. See [Landing pages](landing.md) for det
 |---|---|---|
 | `page.image` | string | The front matter `image`, or empty |
 | `page.sections` | object[] | Holds `type`, `eyebrow`, `title`, `text`, `image`, `actions`, `items`. Empty array when absent |
-| `page.og.title` | string | `{page.title} — {site.title}` when `page.title` is set, otherwise `site.title` |
+| `page.generated_listing` | boolean | `true` only for an automatically generated listing page; `false` for documents and tag pages |
+| `page.og.title` | string | `site.title` for an empty title or generated listing page 1; otherwise `{page.title} — {site.title}` |
 | `page.og.description` | string | `page.description`, or `site.description` |
 | `page.og.type` | string | `article` when `page.layout` is `post`, otherwise `website` |
 | `page.og.url` | string | The absolute URL formed from `site.url` and `page.permalink`. Empty when `site.url` is empty |
@@ -67,6 +69,14 @@ The landing and OGP variables are below. See [Landing pages](landing.md) for det
 | `page.og.twitter_card` | string | `summary_large_image` when `page.og.image` is non-empty, otherwise empty |
 
 `page.og` is not landing-specific: it is present in every layout (`post`, `page`, `index`, `tag`, `landing`). On listing and tag pages, `page.image` is empty, `page.sections` is an empty array, and `page.og.type` is `website`. `base.html` only reads `page.og`, and drops the whole `meta` element when a value is empty.
+
+When `content/index.md` is absent, the generated home keeps `page.title` equal to `site.title`
+for compatibility with custom templates and sets `page.generated_listing` to `true`. On page 1,
+the default theme emits the site title once in both `<title>` and `page.og.title`. Page 2 and later
+use `Page N — {site.title}` (the localized generated title is `ページ N`). An explicit
+`content/index.md` is a document with `page.generated_listing` set to `false`, so its title keeps
+the site suffix. Normal documents and tag pages also keep the suffix even when their title or tag
+name equals `site.title`, for example `Site — Site`.
 
 Emptiness is tested with an explicit comparison such as `{% if page.og.url != "" %}`. inja's `{% if %}` already treats an `empty()` string or array as false (the `truthy` helper in `renderer.hpp` returns `!empty()` as its last resort), so `{% if page.og.url %}` would also skip an empty string. The explicit comparison is preferred so the template itself shows that the value is a string. Arrays are false when empty, so `{% if section.actions %}` can be written directly.
 

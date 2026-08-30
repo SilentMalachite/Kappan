@@ -104,9 +104,11 @@ nlohmann::json sections_json(const std::vector<LandingSection> &sections) {
   return list;
 }
 
-// 同梱テンプレートの {% block title %} と同じ式にする。
-std::string title_with_site(const Config &config, std::string_view title) {
-  if (title.empty()) {
+enum class OgTitlePolicy { AppendSite, SiteOnly };
+
+// 同梱テンプレートの {% block title %} と同じ規則にする。
+std::string title_with_site(const Config &config, std::string_view title, OgTitlePolicy policy) {
+  if (policy == OgTitlePolicy::SiteOnly || title.empty()) {
     return config.title;
   }
   return std::format("{} — {}", title, config.title);
@@ -129,6 +131,7 @@ struct OgInput {
   std::string_view layout;
   std::string_view permalink;
   std::string_view image;
+  OgTitlePolicy title_policy = OgTitlePolicy::AppendSite;
 };
 
 nlohmann::json og_json(const Config &config, const OgInput &input) {
@@ -137,7 +140,7 @@ nlohmann::json og_json(const Config &config, const OgInput &input) {
   const auto image = absolute_url(config, input.image);
   const std::string url =
       config.url.empty() ? std::string{} : util::join_url(config.url, input.permalink);
-  return {{"title", html_escape(title_with_site(config, input.title))},
+  return {{"title", html_escape(title_with_site(config, input.title, input.title_policy))},
           {"description", html_escape(description)},
           {"type", input.layout == "post" ? "article" : "website"},
           {"url", html_escape(url)},
@@ -156,6 +159,7 @@ nlohmann::json page_json(const Config &config, const Document &document) {
   json["content"] = document.body_html;
   json["image"] = html_escape(document.front_matter.image);
   json["sections"] = sections_json(document.front_matter.sections);
+  json["generated_listing"] = false;
   json["og"] = og_json(config, document);
   return json;
 }
@@ -191,8 +195,11 @@ nlohmann::json make_listing_context(const Site &site, const site::Pagination &pa
       {"date_display", nullptr},
       {"image", ""},
       {"sections", nlohmann::json::array()},
+      {"generated_listing", true},
       {"og", og_json(site.config,
-                     OgInput{title, site.config.description, "index", pagination.permalink, ""})},
+                     OgInput{title, site.config.description, "index", pagination.permalink, "",
+                             pagination.page == 1 ? OgTitlePolicy::SiteOnly
+                                                  : OgTitlePolicy::AppendSite})},
   };
   return {{"site", site_json(site.config)},
           {"page", std::move(page)},
@@ -219,6 +226,7 @@ nlohmann::json make_tag_context(const Site &site, const TaxonomyTerm &term) {
       {"date_display", nullptr},
       {"image", ""},
       {"sections", nlohmann::json::array()},
+      {"generated_listing", false},
       {"og", og_json(site.config,
                      OgInput{term.name, site.config.description, "tag", term.permalink, ""})},
   };

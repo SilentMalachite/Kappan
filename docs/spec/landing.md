@@ -19,7 +19,7 @@ For the front matter format, see [Front matter](front-matter.md).
 
 | Field | Rule |
 |---|---|
-| `og.title` | `{page.title} — {site.title}` when `page.title` is non-empty, otherwise `site.title`. The same expression as `<title>` in the bundled template |
+| `og.title` | `{page.title} — {site.title}` when `page.title` is non-empty, otherwise `site.title`. As the only exception, generated listing page 1 uses `site.title` alone even though `page.title` is set. The same policy as `<title>` in the bundled template |
 | `og.description` | `page.description` when non-empty, otherwise `site.description` |
 | `og.type` | `article` when `page.layout` is `post`, otherwise `website` |
 | `og.url` | The absolute URL formed from `site.url` and `page.permalink` when `site.url` is non-empty, otherwise empty |

@@ -1,5 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ page.title }} — {{ site.title }}{% endblock %}
+{% block title -%}
+{% if page.generated_listing and pagination.page == 1 -%}
+{{- site.title -}}
+{%- else -%}
+{{- page.title }} — {{ site.title -}}
+{%- endif -%}
+{%- endblock %}
 {% block content %}
 {% if page.content %}
 <article>

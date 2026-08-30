@@ -3,8 +3,10 @@
 #include <kappan/site.hpp>
 
 #include "content/parse.hpp"
+#include "render/context.hpp"
 #include "render/engine.hpp"
 #include "render/escape.hpp"
+#include "site/paginate.hpp"
 #include "util/path.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -12,6 +14,8 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -23,6 +27,53 @@ kappan::Config load_ja_config() {
   const auto loaded = kappan::config::load(fixtures_dir() / "site-ja" / "site.yaml");
   REQUIRE(loaded);
   return *loaded;
+}
+
+kappan::Config listing_config() {
+  kappan::Config config;
+  config.title = "一覧サイト";
+  config.language = "ja";
+  config.description = "一覧の説明";
+  config.source_root = std::filesystem::path{"fixtures"} / "generated-home";
+  config.content_dir = config.source_root / "content";
+  return config;
+}
+
+kappan::Document post_document(std::string title, std::string slug,
+                               std::vector<std::string> tags = {}) {
+  kappan::Document document;
+  document.source = std::filesystem::path{"content/posts"} / (slug + ".md");
+  document.front_matter.title = std::move(title);
+  document.front_matter.layout = "post";
+  document.front_matter.slug = slug;
+  document.front_matter.tags = std::move(tags);
+  document.body_html = "<p>日本語の本文🐙</p>\n";
+  document.output_path = std::filesystem::path{"posts"} / slug / "index.html";
+  document.permalink = "/posts/" + slug + "/";
+  return document;
+}
+
+kappan::Document page_document(std::string title, std::string layout, std::string slug,
+                               std::string permalink) {
+  kappan::Document document;
+  document.source = std::filesystem::path{"content"} / (slug + ".md");
+  document.front_matter.title = std::move(title);
+  document.front_matter.layout = std::move(layout);
+  document.front_matter.slug = std::move(slug);
+  document.body_html = "<p>明示ページの本文</p>\n";
+  document.output_path = kappan::util::output_from_permalink(permalink);
+  document.permalink = std::move(permalink);
+  return document;
+}
+
+void require_exact_title_and_og(const std::string &html, const std::string &expected) {
+  const auto title = "<title>" + expected + "</title>";
+  const auto og = "<meta property=\"og:title\" content=\"" + expected + "\">";
+  INFO("期待する title 要素: " << title);
+  INFO("期待する og:title 要素: " << og);
+  INFO("実際の HTML: " << html);
+  REQUIRE(html.find(title) != std::string::npos);
+  REQUIRE(html.find(og) != std::string::npos);
 }
 
 } // namespace
@@ -307,4 +358,106 @@ TEST_CASE("Embedded base omits og:url and og:image meta when site url is empty")
   REQUIRE(page->html.find("og:image") == std::string::npos);
   REQUIRE(page->html.find("twitter:card") == std::string::npos);
   std::filesystem::remove_all(root);
+}
+
+TEST_CASE("generated home emits the site title once in HTML and OGP") {
+  auto config = listing_config();
+  const auto site = kappan::site::build(config, {post_document("記事🐙", "article-octopus")},
+                                        kappan::DraftPolicy::Include);
+  const auto pages = kappan::site::paginate(site.posts.indices, site.config.posts_per_page);
+  REQUIRE(pages.size() == 1);
+
+  const auto context = kappan::render::make_listing_context(site, pages.front());
+  REQUIRE(context["page"]["title"] == "一覧サイト");
+  REQUIRE(context["page"]["generated_listing"] == true);
+  REQUIRE(context["page"]["og"]["title"] == "一覧サイト");
+
+  auto engine = kappan::render::Engine::load(config);
+  REQUIRE(engine);
+  const auto rendered = engine->render_listing(site, 1);
+  REQUIRE(rendered);
+  require_exact_title_and_og(rendered->html, "一覧サイト");
+  REQUIRE(rendered->html.find("一覧サイト — 一覧サイト") == std::string::npos);
+}
+
+TEST_CASE("generated listing page 2 appends the site title in HTML and OGP") {
+  const std::vector<std::pair<std::string, std::string>> title_cases = {
+      {"一覧サイト", "ページ 2 — 一覧サイト"},
+      {"ページ 2", "ページ 2 — ページ 2"},
+  };
+
+  for (const auto &[site_title, expected_title] : title_cases) {
+    DYNAMIC_SECTION("site title: " << site_title) {
+      auto config = listing_config();
+      config.title = site_title;
+      config.posts_per_page = 1;
+      const auto site = kappan::site::build(
+          config, {post_document("新しい記事🐙", "newer"), post_document("古い記事🐙", "older")},
+          kappan::DraftPolicy::Include);
+      const auto pages = kappan::site::paginate(site.posts.indices, site.config.posts_per_page);
+      REQUIRE(pages.size() == 2);
+
+      const auto context = kappan::render::make_listing_context(site, pages[1]);
+      REQUIRE(context["page"]["title"] == "ページ 2");
+      REQUIRE(context["page"]["generated_listing"] == true);
+      REQUIRE(context["page"]["og"]["title"] == expected_title);
+
+      auto engine = kappan::render::Engine::load(config);
+      REQUIRE(engine);
+      const auto rendered = engine->render_listing(site, 2);
+      REQUIRE(rendered);
+      require_exact_title_and_og(rendered->html, expected_title);
+    }
+  }
+}
+
+TEST_CASE("explicit index and normal post keep the site title suffix") {
+  auto config = listing_config();
+  auto home = page_document("ホーム", "index", "index", "/");
+  auto post = post_document("記事", "article");
+  const auto site = kappan::site::build(config, {home, post}, kappan::DraftPolicy::Include);
+  auto engine = kappan::render::Engine::load(config);
+  REQUIRE(engine);
+
+  const auto home_context = kappan::render::make_context(site, site.documents[0], nullptr);
+  REQUIRE(home_context["page"]["generated_listing"] == false);
+  const auto rendered_home = engine->render(site, site.documents[0]);
+  REQUIRE(rendered_home);
+  require_exact_title_and_og(rendered_home->html, "ホーム — 一覧サイト");
+
+  const auto post_context = kappan::render::make_context(site, site.documents[1], nullptr);
+  REQUIRE(post_context["page"]["generated_listing"] == false);
+  const auto rendered_post = engine->render(site, site.documents[1]);
+  REQUIRE(rendered_post);
+  require_exact_title_and_og(rendered_post->html, "記事 — 一覧サイト");
+}
+
+TEST_CASE("explicit pages and tag keep the suffix when title equals the site title") {
+  auto config = listing_config();
+  std::vector<kappan::Document> documents = {
+      page_document("一覧サイト", "index", "index", "/"),
+      post_document("一覧サイト", "same-post", {"一覧サイト"}),
+      page_document("一覧サイト", "page", "same-page", "/same-page/"),
+      page_document("一覧サイト", "landing", "same-landing", "/same-landing/"),
+  };
+  const auto site = kappan::site::build(config, std::move(documents), kappan::DraftPolicy::Include);
+  auto engine = kappan::render::Engine::load(config);
+  REQUIRE(engine);
+
+  for (std::size_t index = 0; index < site.documents.size(); ++index) {
+    const auto &document = site.documents[index];
+    INFO("layout: " << document.front_matter.layout);
+    const auto context = kappan::render::make_context(site, document, nullptr);
+    REQUIRE(context["page"]["generated_listing"] == false);
+    const auto rendered = engine->render(site, document);
+    REQUIRE(rendered);
+    require_exact_title_and_og(rendered->html, "一覧サイト — 一覧サイト");
+  }
+
+  REQUIRE(site.tags.terms.size() == 1);
+  const auto tag_context = kappan::render::make_tag_context(site, site.tags.terms.front());
+  REQUIRE(tag_context["page"]["generated_listing"] == false);
+  const auto rendered_tag = engine->render_tag(site, site.tags.terms.front().slug);
+  REQUIRE(rendered_tag);
+  require_exact_title_and_og(rendered_tag->html, "一覧サイト — 一覧サイト");
 }

@@ -19,7 +19,7 @@ front matter の書式は [Front matter](front-matter.md) を見ること。
 
 | フィールド | 規則 |
 |---|---|
-| `og.title` | `page.title` が空でなければ `{page.title} — {site.title}`、空なら `site.title`。同梱テンプレートの `<title>` と同じ式 |
+| `og.title` | `page.title` が空でなければ `{page.title} — {site.title}`、空なら `site.title`。唯一の例外として、自動生成した一覧の 1 ページ目は `page.title` が設定済みでも `site.title` だけにする。同梱テンプレートの `<title>` と同じ規則 |
 | `og.description` | `page.description` が空でなければそれ、空なら `site.description` |
 | `og.type` | `page.layout` が `post` なら `article`、それ以外は `website` |
 | `og.url` | `site.url` が空でなければ `site.url` と `page.permalink` を連結した絶対 URL、空なら空 |
