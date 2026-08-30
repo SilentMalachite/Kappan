@@ -1,0 +1,7 @@
+# ワークツリーの改行を LF に固定する。
+#
+# Windows の checkout は既定で LF を CRLF に変換する。この変換が入ると、
+# バイト単位で比較する tests/golden/ の期待値が壊れ、themes/default/ から
+# バイナリへ埋め込むテンプレートにも CRLF が混ざって生成物が変わる。
+# 変換を止めて、どの OS でも同じバイト列を扱う。
+* text=auto eol=lf
