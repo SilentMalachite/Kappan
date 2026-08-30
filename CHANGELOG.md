@@ -30,6 +30,12 @@ Documentation only. The binary behaves exactly as 0.1.0 does.
 
 First release.
 
+> **The documentation bundled in the 0.1.0 archives is superseded by 0.1.1.**
+> The `README.md` inside them predates English becoming canonical, and it states compiler
+> requirements that later turned out to be wrong. The executables are unaffected: 0.1.1
+> changes documentation only and behaves identically. Prefer
+> [v0.1.1](https://github.com/SilentMalachite/Kappan/releases/tag/v0.1.1).
+
 ### Added
 
 - `kappan build` — generates a static site from a site root containing `site.yaml`.
