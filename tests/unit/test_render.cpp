@@ -120,3 +120,110 @@ TEST_CASE("html_escape drops forbidden control characters too") {
   REQUIRE(kappan::render::html_escape("a\tb\nc") == "a\tb\nc");
   REQUIRE(kappan::render::html_escape("日本語 🐙") == "日本語 🐙");
 }
+
+TEST_CASE("Engine renders a landing page with sections and OGP") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-render-landing";
+  const auto content = root / "content";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(content);
+  std::filesystem::create_directories(root / "templates");
+  {
+    std::ofstream yaml(root / "site.yaml", std::ios::binary);
+    yaml << "title: 活版LP\nurl: https://example.com\nlanguage: ja\ndescription: サイト説明\n";
+  }
+  {
+    std::ofstream tmpl(root / "templates" / "landing.html", std::ios::binary);
+    tmpl << "<p data-og-title=\"{{ page.og.title }}\"></p>\n"
+            "<p data-page-image=\"{{ page.image }}\"></p>\n"
+            "<p data-og-url=\"{{ page.og.url }}\"></p>\n"
+            "<p data-og-image=\"{{ page.og.image }}\"></p>\n"
+            "{% for section in page.sections %}\n"
+            "<section data-type=\"{{ section.type }}\"><h2>{{ section.title }}</h2>"
+            "{% for action in section.actions %}<a href=\"{{ action.href }}\">{{ action.label "
+            "}}</a>{% endfor %}"
+            "</section>\n"
+            "{% endfor %}\n"
+            "{{ page.content }}\n";
+  }
+  const auto source = content / "index.md";
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\n"
+           "title: 日本語LP 🐙\n"
+           "layout: landing\n"
+           "description: LP説明\n"
+           "image: /images/og.svg\n"
+           "sections:\n"
+           "  - type: hero\n"
+           "    title: '<強い見出し>'\n"
+           "    actions:\n"
+           "      - label: 開く\n"
+           "        href: '#start'\n"
+           "---\n"
+           "本文 <strong>HTML</strong>\n";
+  }
+
+  const auto config = kappan::config::load(root / "site.yaml");
+  REQUIRE(config);
+  const auto document = kappan::content::parse_document(source, *config);
+  REQUIRE(document);
+  auto engine = kappan::render::Engine::load(*config);
+  REQUIRE(engine);
+  auto site = kappan::site::build(*config, {*document}, kappan::DraftPolicy::Include);
+  const auto page = engine->render(site, site.documents.front());
+  REQUIRE(page);
+  REQUIRE(page->html.find("data-og-title=\"日本語LP 🐙 — 活版LP\"") != std::string::npos);
+  REQUIRE(page->html.find("data-page-image=\"/images/og.svg\"") != std::string::npos);
+  REQUIRE(page->html.find("data-og-url=\"https://example.com/\"") != std::string::npos);
+  REQUIRE(page->html.find("data-og-image=\"https://example.com/images/og.svg\"") !=
+          std::string::npos);
+  REQUIRE(page->html.find("<section data-type=\"hero\">") != std::string::npos);
+  REQUIRE(page->html.find("&lt;強い見出し&gt;") != std::string::npos);
+  REQUIRE(page->html.find("<strong>HTML</strong>") != std::string::npos);
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("Engine omits og:url and relative og:image when site url is empty") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-render-landing-no-url";
+  const auto content = root / "content";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(content);
+  std::filesystem::create_directories(root / "templates");
+  {
+    std::ofstream yaml(root / "site.yaml", std::ios::binary);
+    yaml << "title: URLなし\nlanguage: ja\ndescription: サイト説明\n";
+  }
+  {
+    std::ofstream tmpl(root / "templates" / "landing.html", std::ios::binary);
+    tmpl << "<p data-og-title=\"{{ page.og.title }}\"></p>\n"
+            "<p data-og-description=\"{{ page.og.description }}\"></p>\n"
+            "<p data-og-url=\"{{ page.og.url }}\"></p>\n"
+            "<p data-og-image=\"{{ page.og.image }}\"></p>\n";
+  }
+  const auto source = content / "index.md";
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\n"
+           "title: 共有なし\n"
+           "layout: landing\n"
+           "description: ページ説明\n"
+           "image: /images/og.svg\n"
+           "---\n"
+           "本文\n";
+  }
+
+  const auto config = kappan::config::load(root / "site.yaml");
+  REQUIRE(config);
+  const auto document = kappan::content::parse_document(source, *config);
+  REQUIRE(document);
+  auto engine = kappan::render::Engine::load(*config);
+  REQUIRE(engine);
+  auto site = kappan::site::build(*config, {*document}, kappan::DraftPolicy::Include);
+  const auto page = engine->render(site, site.documents.front());
+  REQUIRE(page);
+  REQUIRE(page->html.find("data-og-title=\"共有なし — URLなし\"") != std::string::npos);
+  REQUIRE(page->html.find("data-og-description=\"ページ説明\"") != std::string::npos);
+  REQUIRE(page->html.find("data-og-url=\"\"") != std::string::npos);
+  REQUIRE(page->html.find("data-og-image=\"\"") != std::string::npos);
+  std::filesystem::remove_all(root);
+}

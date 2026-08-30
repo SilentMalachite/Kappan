@@ -2,6 +2,7 @@
 #include "output/write.hpp"
 #include "output/xml.hpp"
 #include "util/path.hpp"
+#include "util/url.hpp"
 
 #include <kappan/error.hpp>
 #include <kappan/site.hpp>
@@ -22,10 +23,10 @@ TEST_CASE("xml_escape converts XML special characters") {
 }
 
 TEST_CASE("join_url strips trailing slashes and keeps Japanese permalinks") {
-  REQUIRE(kappan::output::join_url("https://example.com/", "/") == "https://example.com/");
-  REQUIRE(kappan::output::join_url("https://example.com", "/posts/こんにちは/") ==
+  REQUIRE(kappan::util::join_url("https://example.com/", "/") == "https://example.com/");
+  REQUIRE(kappan::util::join_url("https://example.com", "/posts/こんにちは/") ==
           "https://example.com/posts/こんにちは/");
-  REQUIRE(kappan::output::join_url("https://example.com/blog/", "/about/") ==
+  REQUIRE(kappan::util::join_url("https://example.com/blog/", "/about/") ==
           "https://example.com/blog/about/");
 }
 

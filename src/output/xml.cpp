@@ -2,6 +2,7 @@
 
 #include "util/datetime.hpp"
 #include "util/escape.hpp"
+#include "util/url.hpp"
 
 #include <algorithm>
 #include <ranges>
@@ -10,7 +11,7 @@ namespace kappan::output {
 namespace {
 
 void append_item(std::string &out, std::string_view base_url, const Document &document) {
-  const auto abs = join_url(base_url, document.permalink);
+  const auto abs = util::join_url(base_url, document.permalink);
   const auto &description = document.front_matter.description.empty()
                                 ? document.body_html
                                 : document.front_matter.description;
@@ -39,17 +40,6 @@ void append_item(std::string &out, std::string_view base_url, const Document &do
 
 std::string xml_escape(std::string_view text) { return util::escape_markup(text, "&apos;"); }
 
-std::string join_url(std::string_view base_url, std::string_view permalink) {
-  std::string base{base_url};
-  while (!base.empty() && base.back() == '/') {
-    base.pop_back();
-  }
-  if (permalink.empty()) {
-    return base + "/";
-  }
-  return base + std::string{permalink};
-}
-
 std::string render_sitemap(std::string_view base_url, std::vector<SitemapUrl> urls) {
   std::ranges::sort(urls, {}, &SitemapUrl::permalink);
 
@@ -59,7 +49,7 @@ std::string render_sitemap(std::string_view base_url, std::vector<SitemapUrl> ur
   for (const auto &url : urls) {
     out += "  <url>\n";
     out += "    <loc>";
-    out += xml_escape(join_url(base_url, url.permalink));
+    out += xml_escape(util::join_url(base_url, url.permalink));
     out += "</loc>\n";
     if (url.lastmod) {
       out += "    <lastmod>";
@@ -84,7 +74,7 @@ std::string render_feed(const Site &site, const std::set<std::string> &written_p
   out += xml_escape(config.title);
   out += "</title>\n";
   out += "    <link>";
-  out += xml_escape(join_url(config.url, "/"));
+  out += xml_escape(util::join_url(config.url, "/"));
   out += "</link>\n";
   out += "    <description>";
   out += xml_escape(description);
