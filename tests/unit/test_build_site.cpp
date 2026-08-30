@@ -85,6 +85,48 @@ TEST_CASE("build_site keeps good pages when one front matter is broken") {
   std::filesystem::remove_all(out);
 }
 
+TEST_CASE("build_site aggregates non-map front matter errors") {
+  const auto source = std::filesystem::temp_directory_path() / "kappan-site-non-map-roots";
+  const auto content = source / "content";
+  const auto out = source / "out";
+  std::filesystem::remove_all(source);
+  std::filesystem::create_directories(content);
+  {
+    std::ofstream file(source / "site.yaml", std::ios::binary);
+    file << "title: ルート型検証\n";
+  }
+  {
+    std::ofstream file(content / "good.md", std::ios::binary);
+    file << "---\ntitle: 正常ページ\nslug: 正常\n---\n日本語の本文 🐙\n";
+  }
+  {
+    std::ofstream file(content / "bad-scalar.md", std::ios::binary);
+    file << "---\ntitle\n---\n本文\n";
+  }
+  {
+    std::ofstream file(content / "bad-sequence.md", std::ios::binary);
+    file << "---\n- title\n- 配列\n---\n本文\n";
+  }
+  {
+    std::ofstream file(content / "bad-null.md", std::ios::binary);
+    file << "---\n~\n---\n本文\n";
+  }
+
+  const auto result = kappan::content::build_site(source, out);
+  REQUIRE_FALSE(result.ok());
+  REQUIRE(result.errors.size() == 3);
+  for (const auto &error : result.errors) {
+    REQUIRE(error.code == kappan::ErrorCode::FrontMatter);
+    REQUIRE(error.where.has_value());
+    REQUIRE(error.where->parent_path() == content);
+    REQUIRE(error.line.has_value());
+    REQUIRE(*error.line == 2);
+  }
+  REQUIRE(std::filesystem::exists(out / kappan::util::from_utf8("正常") / "index.html"));
+  REQUIRE(result.pages_written == 2);
+  std::filesystem::remove_all(source);
+}
+
 TEST_CASE("build_site rejects a Markdown file as --source") {
   const auto file = fixtures_dir() / "ja_emoji.md";
   const auto out = std::filesystem::temp_directory_path() / "kappan-site-file-out";

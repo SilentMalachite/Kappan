@@ -4,6 +4,17 @@
 
 先頭行が `---` のとき、次の `---` までを YAML、残りを Markdown 本文とする。CRLF は読み込み時に LF へ正規化済み。`---` が無いファイルは front matter なし。閉じ `---` が無い・YAML が壊れている場合は落ちずに `ErrorCode::FrontMatter` を集約する。
 
+区切りの間が空なら front matter なしと同じ扱いにする。非空の YAML はドキュメントのルートがマップでなければならない。scalar・sequence・明示的な null（`~`）をルートにすると、対象ソースファイルと front matter の先頭行（通常は2行目）を持つ `ErrorCode::FrontMatter` の検証エラーになる。複数の Markdown ファイルに検証エラーがあっても正常な兄弟ファイルのレンダリングを続け、ビルド終了時にまとめて報告する。
+
+例えば、次の sequence は front matter のルートとして不正:
+
+```yaml
+- title
+- 配列
+```
+
+`content/bad-sequence.md:2 front matter はマップである必要があります`
+
 | キー | 型 | 既定 |
 |---|---|---|
 | `title` | string | 日付プレフィックス除去後の stem |

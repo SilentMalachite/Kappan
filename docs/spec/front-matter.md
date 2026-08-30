@@ -4,6 +4,17 @@
 
 When the first line is `---`, everything up to the next `---` is parsed as YAML and the remainder is the Markdown body. CRLF has already been normalised to LF at read time. A file without `---` has no front matter. A missing closing `---`, or malformed YAML, does not throw: it is collected as `ErrorCode::FrontMatter`.
 
+Empty content between the delimiters is treated the same as no front matter. Any non-empty YAML must have a mapping at the document root. A scalar, sequence, or explicit null (`~`) root produces an `ErrorCode::FrontMatter` validation error with the source file and the first front matter line (normally line 2). Validation errors from multiple Markdown files are collected while valid sibling files continue to be rendered, then reported together when the build finishes.
+
+For example, this sequence is not a valid front matter root:
+
+```yaml
+- title
+- 配列
+```
+
+`content/bad-sequence.md:2 front matter はマップである必要があります`
+
 | Key | Type | Default |
 |---|---|---|
 | `title` | string | The file stem with the date prefix removed |

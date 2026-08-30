@@ -91,6 +91,41 @@ TEST_CASE("parse_document reports broken YAML without throwing") {
   std::filesystem::remove_all(root);
 }
 
+TEST_CASE("parse_document rejects non-map front matter roots") {
+  struct Case {
+    std::string_view name;
+    std::string_view contents;
+  };
+  const std::array<Case, 3> cases{{
+      {"scalar", "---\ntitle\n---\n本文\n"},
+      {"sequence", "---\r\n- title\r\n- 配列\r\n---\r\n本文\r\n"},
+      {"null", "---\n~\n---\n本文\n"},
+  }};
+
+  for (const auto &item : cases) {
+    CAPTURE(item.name);
+    const auto root =
+        std::filesystem::temp_directory_path() / std::string{"kappan-fm-root-"}.append(item.name);
+    const auto content = root / "content";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(content);
+    const auto source = content / kappan::util::from_utf8("ルート.md");
+    {
+      std::ofstream out(source, std::ios::binary);
+      out << item.contents;
+    }
+
+    const auto result = kappan::content::parse_document(source, test_config(root));
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().code == kappan::ErrorCode::FrontMatter);
+    REQUIRE(result.error().where == source);
+    REQUIRE(result.error().line.has_value());
+    REQUIRE(*result.error().line == 2);
+    REQUIRE(result.error().message.find("マップ") != std::string::npos);
+    std::filesystem::remove_all(root);
+  }
+}
+
 TEST_CASE("parse_document accepts CRLF front matter") {
   const auto root = std::filesystem::temp_directory_path() / "kappan-fm-crlf";
   const auto content = root / "content";

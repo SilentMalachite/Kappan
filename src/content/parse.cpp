@@ -92,6 +92,13 @@ struct SplitMatter {
                                                  display(source, config), line, ex.msg),
                                      source, line));
   }
+  if (!root.IsMap()) {
+    const int line = yaml_file_line(root.Mark(), split.yaml_start_line);
+    return tl::unexpected(make_error(ErrorCode::FrontMatter,
+                                     std::format("{}:{} front matter はマップである必要があります",
+                                                 display(source, config), line),
+                                     source, line));
+  }
 
   auto title = scalar_key(root["title"], "title", source, config, split.yaml_start_line);
   if (!title) {
