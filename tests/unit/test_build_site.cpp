@@ -69,6 +69,37 @@ TEST_CASE("build_site writes pretty URLs for a Japanese blog") {
   std::filesystem::remove_all(out);
 }
 
+TEST_CASE("build_site writes Windows-safe slug directories") {
+  const auto source = std::filesystem::temp_directory_path() / "kappan-windows-safe-slugs";
+  const auto posts = source / "content" / "posts";
+  const auto out = source / "out";
+  std::filesystem::remove_all(source);
+  std::filesystem::create_directories(posts);
+  {
+    std::ofstream file(source / "site.yaml", std::ios::binary);
+    file << "title: Windows slug 検証\n";
+  }
+  {
+    std::ofstream file(posts / "first.md", std::ios::binary);
+    file << "---\ntitle: Windows 予約名 🐙\nslug: CON\nlayout: post\n---\n本文\n";
+  }
+  {
+    std::ofstream file(posts / "second.md", std::ios::binary);
+    file << "---\ntitle: 末尾ドット\nslug: LPT9.\nlayout: post\n---\n本文\n";
+  }
+
+  const auto result = kappan::content::build_site(source, out);
+
+  REQUIRE(result.ok());
+  REQUIRE(std::filesystem::exists(out / "posts" / "_con" / "index.html"));
+  REQUIRE(std::filesystem::exists(out / "posts" / "_lpt9" / "index.html"));
+  const auto home = read_all(out / "index.html");
+  REQUIRE(home.find("/posts/_con/") != std::string::npos);
+  REQUIRE(home.find("/posts/_lpt9/") != std::string::npos);
+
+  std::filesystem::remove_all(source);
+}
+
 TEST_CASE("build_site keeps good pages when one front matter is broken") {
   const auto source = fixtures_dir() / "site-bad-fm";
   const auto out = std::filesystem::temp_directory_path() / "kappan-site-partial-out";

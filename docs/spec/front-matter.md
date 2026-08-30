@@ -27,6 +27,8 @@ For example, this sequence is not a valid front matter root:
 | `image` | string | `""` |
 | `sections` | map[] | empty |
 
+Explicit front matter `slug:` values use the same normalisation as stem and title fallbacks. Trailing dots are removed, and a Windows reserved device basename is prefixed with `_` on every OS: `CON` → `_con`, `con.txt` → `_con.txt`, and `LPT9.` → `_lpt9`.
+
 `date` is parsed from the scalar string by hand rather than relying on the yaml-cpp date type. An example of an invalid value:
 
 `content/posts/2026-01-01-hello.md:3 front matter の 'date' が日付として解釈できません: '2026-13-01'`

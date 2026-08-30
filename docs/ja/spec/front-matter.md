@@ -27,6 +27,8 @@
 | `image` | string | `""` |
 | `sections` | map[] | 空 |
 
+明示的なfront matter `slug:` 値にも、stemとtitleのフォールバックと同じ正規化を適用する。末尾のdotを取り除き、Windows予約デバイス名のbasenameには全OS共通で `_` を付ける: `CON` → `_con`, `con.txt` → `_con.txt`, `LPT9.` → `_lpt9`。
+
 `date` は yaml-cpp の日付型に頼らず、スカラー文字列を自分でパースする。不正値の例:
 
 `content/posts/2026-01-01-hello.md:3 front matter の 'date' が日付として解釈できません: '2026-13-01'`

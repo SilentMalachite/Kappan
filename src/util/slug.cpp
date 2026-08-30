@@ -36,6 +36,16 @@ void append_utf8(std::string &out, char32_t cp) {
          cp == U'\\' || cp == U'|' || cp == U'?' || cp == U'*';
 }
 
+[[nodiscard]] bool is_windows_device_name(std::string_view slug) {
+  const auto dot = slug.find('.');
+  const auto base = slug.substr(0, dot);
+  if (base == "con" || base == "prn" || base == "aux" || base == "nul") {
+    return true;
+  }
+  return base.size() == 4 && (base.starts_with("com") || base.starts_with("lpt")) &&
+         base.back() >= '1' && base.back() <= '9';
+}
+
 } // namespace
 
 std::optional<std::string> try_slugify(std::string_view text) {
@@ -70,6 +80,9 @@ std::optional<std::string> try_slugify(std::string_view text) {
   while (!out.empty() && out.back() == '-') {
     out.pop_back();
   }
+  while (!out.empty() && out.back() == '.') {
+    out.pop_back();
+  }
   if (out.empty()) {
     return std::nullopt;
   }
@@ -77,6 +90,9 @@ std::optional<std::string> try_slugify(std::string_view text) {
   // '.' 自体は予約文字にしない（"v1.2" や "..記事" のような slug を壊さないため）。
   if (out.find_first_not_of('.') == std::string::npos) {
     return std::nullopt;
+  }
+  if (is_windows_device_name(out)) {
+    out.insert(out.begin(), '_');
   }
   return out;
 }
