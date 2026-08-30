@@ -7,9 +7,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <string>
 
 namespace {
 
@@ -315,4 +317,66 @@ TEST_CASE("parse_document reports invalid landing sections with a file line") {
   REQUIRE(*result.error().line == 6);
   REQUIRE(result.error().message.find("sections.actions") != std::string::npos);
   std::filesystem::remove_all(root);
+}
+
+TEST_CASE("parse_document reports every invalid landing section shape") {
+  struct Case {
+    const char *name;   // 一時ディレクトリ名
+    const char *yaml;   // front matter の 2 行目以降（1 行目は '---'）
+    int line;           // 期待するファイル行番号
+    const char *key;    // メッセージに出るキー
+    const char *reason; // メッセージに出る理由
+  };
+  const std::array<Case, 10> cases{{
+      {"seq", "title: LP\nlayout: landing\nsections: ヒーロー\n", 4, "'sections'",
+       "マップの配列である必要があります"},
+      {"elem", "title: LP\nlayout: landing\nsections:\n  - ヒーロー\n", 5, "'sections'",
+       "要素はマップである必要があります"},
+      {"field", "title: LP\nlayout: landing\nsections:\n  - type: hero\n    title: [a]\n", 6,
+       "'sections.title'", "文字列である必要があります"},
+      {"actions-seq", "title: LP\nlayout: landing\nsections:\n  - type: hero\n    actions: 開く\n",
+       6, "'sections.actions'", "マップの配列である必要があります"},
+      {"actions-elem",
+       "title: LP\nlayout: landing\nsections:\n  - type: hero\n    actions:\n      - 開く\n", 7,
+       "'sections.actions'", "要素はマップである必要があります"},
+      {"actions-label",
+       "title: LP\nlayout: landing\nsections:\n  - type: hero\n    actions:\n      - label: [a]\n",
+       7, "'sections.actions.label'", "文字列である必要があります"},
+      {"actions-href",
+       "title: LP\nlayout: landing\nsections:\n  - type: hero\n    actions:\n      - label: 開く\n"
+       "        href: [a]\n",
+       8, "'sections.actions.href'", "文字列である必要があります"},
+      {"items-seq", "title: LP\nlayout: landing\nsections:\n  - type: features\n    items: 項目\n",
+       6, "'sections.items'", "マップの配列である必要があります"},
+      {"items-elem",
+       "title: LP\nlayout: landing\nsections:\n  - type: features\n    items:\n      - 項目\n", 7,
+       "'sections.items'", "要素はマップである必要があります"},
+      {"items-icon",
+       "title: LP\nlayout: landing\nsections:\n  - type: features\n    items:\n      - icon: [a]\n",
+       7, "'sections.items.icon'", "文字列である必要があります"},
+  }};
+
+  for (const auto &item : cases) {
+    CAPTURE(item.name);
+    const auto root =
+        std::filesystem::temp_directory_path() / (std::string{"kappan-fm-sections-"} + item.name);
+    const auto content = root / "content";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(content);
+    const auto source = content / "index.md";
+    {
+      std::ofstream out(source, std::ios::binary);
+      out << "---\n" << item.yaml << "---\n本文\n";
+    }
+
+    const auto result = kappan::content::parse_document(source, test_config(root));
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().code == kappan::ErrorCode::FrontMatter);
+    REQUIRE(result.error().where == source);
+    REQUIRE(result.error().line.has_value());
+    REQUIRE(*result.error().line == item.line);
+    REQUIRE(result.error().message.find(item.key) != std::string::npos);
+    REQUIRE(result.error().message.find(item.reason) != std::string::npos);
+    std::filesystem::remove_all(root);
+  }
 }
