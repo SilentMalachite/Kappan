@@ -12,7 +12,7 @@ namespace kappan::content {
 
 struct BuildResult {
   int pages_written = 0;
-  std::vector<Error> errors;
+  std::vector<Error> errors{};
 
   [[nodiscard]] bool ok() const { return errors.empty(); }
 };
