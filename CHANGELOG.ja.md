@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-30
+
 ### 修正
 
 - `--force` を指定せずに非空の出力先を再利用する条件を、`.kappan-out` が通常ファイルで、
@@ -83,6 +85,7 @@
   手順は README の「インストール」節にあります
 - 配布方針の判断は [ADR-0011](docs/ja/adr/0011-release-distribution.md) に記録しています
 
-[Unreleased]: https://github.com/SilentMalachite/Kappan/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/SilentMalachite/Kappan/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/SilentMalachite/Kappan/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/SilentMalachite/Kappan/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/SilentMalachite/Kappan/releases/tag/v0.1.0

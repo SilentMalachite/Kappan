@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(kappan VERSION 0.1.1 LANGUAGES CXX)
+project(kappan VERSION 0.1.2 LANGUAGES CXX)
 
 if(WIN32 AND NOT MSVC)
   message(
