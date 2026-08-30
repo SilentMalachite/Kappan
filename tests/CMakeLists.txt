@@ -26,3 +26,12 @@ kappan_set_warnings(kappan_tests)
 
 include(Catch)
 catch_discover_tests(kappan_tests)
+
+# 実行ファイル実体で examples/ を生成し、golden と突き合わせる。
+# ライブラリ経由の golden テストが通らない CLI 経路を被覆する。
+add_test(
+  NAME dist_smoke
+  COMMAND
+    ${CMAKE_COMMAND} -DKAPPAN_EXE=$<TARGET_FILE:kappan> -DREPO_ROOT=${CMAKE_SOURCE_DIR}
+    -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/dist_smoke -P
+    ${CMAKE_SOURCE_DIR}/cmake/dist_smoke.cmake)
