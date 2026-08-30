@@ -55,6 +55,9 @@ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
   if(NOT code EQUAL 0)
     message(FATAL_ERROR "dist_selfcontained: ldd に失敗しました (終了コード ${code})\n${tool_stderr}")
   endif()
+  # 実測値（2026-08-30, ubuntu-22.04 / g++-13 / -static-libstdc++ -static-libgcc）。
+  # DT_NEEDED は libm.so.6 / libc.so.6 / ld-linux-x86-64.so.2 の 3 つ。
+  # linux-vdso.so.1 は DT_NEEDED ではなくカーネルが差し込むが ldd の出力には現れる。
   set(allowed linux-vdso.so.1 libm.so.6 libc.so.6 ld-linux-x86-64.so.2)
   string(REPLACE "\n" ";" lines "${raw}")
   foreach(line IN LISTS lines)
