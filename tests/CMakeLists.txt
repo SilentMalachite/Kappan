@@ -35,3 +35,11 @@ add_test(
     ${CMAKE_COMMAND} -DKAPPAN_EXE=$<TARGET_FILE:kappan> -DREPO_ROOT=${CMAKE_SOURCE_DIR}
     -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/dist_smoke -P
     ${CMAKE_SOURCE_DIR}/cmake/dist_smoke.cmake)
+
+# 配布ビルドのときだけ、依存ライブラリが許可リスト内に収まっているかを検証する。
+if(KAPPAN_DIST)
+  add_test(
+    NAME dist_selfcontained
+    COMMAND ${CMAKE_COMMAND} -DKAPPAN_EXE=$<TARGET_FILE:kappan> -P
+            ${CMAKE_SOURCE_DIR}/cmake/dist_selfcontained.cmake)
+endif()
