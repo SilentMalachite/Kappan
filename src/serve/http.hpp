@@ -16,8 +16,8 @@ enum class ResolveKind { File, Redirect, NotFound };
 
 struct ResolvedRequest {
   ResolveKind kind = ResolveKind::NotFound;
-  std::filesystem::path file;
-  std::string location;
+  std::filesystem::path file{};
+  std::string location{};
 };
 
 [[nodiscard]] Result<ResolvedRequest> resolve_request_path(const std::filesystem::path &root,

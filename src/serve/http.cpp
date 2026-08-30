@@ -138,8 +138,8 @@ namespace {
 }
 
 struct SplitTarget {
-  std::string_view path_part;
-  std::string_view query_suffix; // 先頭の '?' を含む。クエリが空なら空。
+  std::string_view path_part{};
+  std::string_view query_suffix{}; // 先頭の '?' を含む。クエリが空なら空。
 };
 
 [[nodiscard]] SplitTarget split_target(std::string_view raw_target) {
