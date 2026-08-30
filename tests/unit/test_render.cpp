@@ -263,3 +263,48 @@ TEST_CASE("Engine renders landing with the embedded default template") {
   REQUIRE(page->html.find("og:type") != std::string::npos);
   std::filesystem::remove_all(root);
 }
+
+TEST_CASE("Embedded base omits og:url and og:image meta when site url is empty") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-render-embedded-no-url";
+  const auto content = root / "content";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(content);
+  {
+    std::ofstream yaml(root / "site.yaml", std::ios::binary);
+    yaml << "title: URLなし\nlanguage: ja\ndescription: サイト説明\n";
+  }
+  const auto source = content / "index.md";
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\n"
+           "title: 共有なし\n"
+           "layout: landing\n"
+           "description: ページ説明\n"
+           "image: /images/og.svg\n"
+           "sections:\n"
+           "  - type: hero\n"
+           "    title: ヒーロー\n"
+           "---\n"
+           "本文\n";
+  }
+  const auto config = kappan::config::load(root / "site.yaml");
+  REQUIRE(config);
+  const auto document = kappan::content::parse_document(source, *config);
+  REQUIRE(document);
+  auto engine = kappan::render::Engine::load(*config);
+  REQUIRE(engine);
+  auto site = kappan::site::build(*config, {*document}, kappan::DraftPolicy::Include);
+  const auto page = engine->render(site, site.documents.front());
+  REQUIRE(page);
+  // 値のある meta は出る。
+  REQUIRE(page->html.find("<meta property=\"og:title\" content=\"共有なし — URLなし\">") !=
+          std::string::npos);
+  REQUIRE(page->html.find("<meta property=\"og:type\" content=\"website\">") != std::string::npos);
+  REQUIRE(page->html.find("<meta property=\"og:description\" content=\"ページ説明\">") !=
+          std::string::npos);
+  // 絶対化できないものは meta 要素ごと出さない。空 content を書かない。
+  REQUIRE(page->html.find("og:url") == std::string::npos);
+  REQUIRE(page->html.find("og:image") == std::string::npos);
+  REQUIRE(page->html.find("twitter:card") == std::string::npos);
+  std::filesystem::remove_all(root);
+}
