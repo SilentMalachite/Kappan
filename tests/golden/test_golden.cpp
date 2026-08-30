@@ -7,6 +7,7 @@
 #include <iterator>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -31,12 +32,12 @@ std::vector<std::filesystem::path> list_files(const std::filesystem::path &root)
   return files;
 }
 
-} // namespace
-
-TEST_CASE("golden blog-ja matches examples/blog") {
-  const auto source = repo_root() / "examples" / "blog";
-  const auto expected = std::filesystem::path(__FILE__).parent_path() / "blog-ja" / "expected";
-  const auto out = std::filesystem::temp_directory_path() / "kappan-golden-single-post";
+void require_golden_site(std::string_view example_name, std::string_view golden_name) {
+  const auto source = repo_root() / "examples" / std::string{example_name};
+  const auto expected =
+      std::filesystem::path(__FILE__).parent_path() / std::string{golden_name} / "expected";
+  const auto out =
+      std::filesystem::temp_directory_path() / ("kappan-golden-" + std::string{example_name});
   std::filesystem::remove_all(out);
 
   const auto result = kappan::content::build_site(source, out);
@@ -53,4 +54,12 @@ TEST_CASE("golden blog-ja matches examples/blog") {
   }
 
   std::filesystem::remove_all(out);
+}
+
+} // namespace
+
+TEST_CASE("golden blog-ja matches examples/blog") { require_golden_site("blog", "blog-ja"); }
+
+TEST_CASE("golden landing-ja matches examples/landing") {
+  require_golden_site("landing", "landing-ja");
 }

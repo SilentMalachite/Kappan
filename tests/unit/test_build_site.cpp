@@ -16,6 +16,10 @@ std::filesystem::path fixtures_dir() {
   return std::filesystem::path(__FILE__).parent_path().parent_path() / "fixtures";
 }
 
+std::filesystem::path repo_root() {
+  return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
+}
+
 std::string read_all(const std::filesystem::path &path) {
   std::ifstream in(path, std::ios::binary);
   return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
@@ -514,4 +518,22 @@ TEST_CASE("build_site keeps feed.xml and sitemap.xml agreeing when a post fails 
   REQUIRE(feed.find("/posts/ok/") != std::string::npos);
 
   std::filesystem::remove_all(source);
+}
+
+TEST_CASE("build_site writes the landing example with OGP") {
+  const auto source = repo_root() / "examples" / "landing";
+  const auto out = std::filesystem::temp_directory_path() / "kappan-landing-example-out";
+  std::filesystem::remove_all(out);
+
+  const auto result = kappan::content::build_site(source, out);
+  REQUIRE(result.ok());
+  REQUIRE(result.pages_written == 1);
+  const auto home = read_all(out / "index.html");
+  REQUIRE(home.find("<meta property=\"og:title\"") != std::string::npos);
+  REQUIRE(home.find("<meta property=\"og:image\"") != std::string::npos);
+  REQUIRE(home.find("日本語LP") != std::string::npos);
+  REQUIRE(home.find("🐙") != std::string::npos);
+  REQUIRE(std::filesystem::exists(out / "images" / "og.svg"));
+  REQUIRE(std::filesystem::exists(out / "css" / "site.css"));
+  std::filesystem::remove_all(out);
 }
