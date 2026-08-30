@@ -84,7 +84,9 @@ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
   if(NOT code EQUAL 0)
     message(FATAL_ERROR "dist_selfcontained: dumpbin /dependents に失敗しました (終了コード ${code})\n${tool_stderr}")
   endif()
-  set(allowed KERNEL32.dll WS2_32.dll ADVAPI32.dll)
+  # 実測値（2026-08-30, windows-latest / x64-windows-static / MSVC 14.51）。
+  # api-ms-win-* は OS 提供の API セットで、Windows 8 以降に存在する。
+  set(allowed KERNEL32.dll WS2_32.dll api-ms-win-core-synch-l1-2-0.dll)
   string(REPLACE "\n" ";" lines "${raw}")
   foreach(line IN LISTS lines)
     if(line MATCHES "^[ \t]+([A-Za-z0-9_.+-]+\\.[Dd][Ll][Ll])")
