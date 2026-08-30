@@ -15,6 +15,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(KAPPAN_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(KAPPAN_DIST "配布用の自己完結バイナリを作る" OFF)
+
+if(KAPPAN_DIST AND MSVC)
+  # vcpkg の x64-windows-static triplet に合わせ、CRT も静的リンクする。
+  # 全ターゲットで揃えないとリンク時に衝突する。
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 find_package(CLI11 CONFIG REQUIRED)
 find_package(tl-expected CONFIG REQUIRED)
@@ -132,6 +139,16 @@ add_executable(kappan src/main.cpp)
 target_link_libraries(kappan PRIVATE kappan_lib CLI11::CLI11)
 target_include_directories(kappan PRIVATE ${CMAKE_SOURCE_DIR}/src)
 kappan_set_warnings(kappan)
+
+if(KAPPAN_DIST AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # glibc は動的のまま。libstdc++ と libgcc だけ静的にして、
+  # ビルド環境より新しい GCC を要求しないようにする。
+  target_link_options(kappan PRIVATE -static-libstdc++ -static-libgcc)
+endif()
+
+install(TARGETS kappan RUNTIME DESTINATION bin)
+install(FILES ${CMAKE_SOURCE_DIR}/README.md ${CMAKE_SOURCE_DIR}/LICENSE
+        DESTINATION share/doc/kappan)
 
 enable_testing()
 add_subdirectory(tests)

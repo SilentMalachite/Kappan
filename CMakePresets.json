@@ -28,6 +28,35 @@
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/../vcpkg/scripts/buildsystems/vcpkg.cmake",
         "KAPPAN_WARNINGS_AS_ERRORS": "ON"
       }
+    },
+    {
+      "name": "dist",
+      "displayName": "Dist (self-contained)",
+      "inherits": "release",
+      "binaryDir": "${sourceDir}/build/dist",
+      "cacheVariables": {
+        "KAPPAN_DIST": "ON"
+      },
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "dist-windows",
+      "displayName": "Dist (self-contained, Windows)",
+      "inherits": "release",
+      "binaryDir": "${sourceDir}/build/dist",
+      "cacheVariables": {
+        "KAPPAN_DIST": "ON",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     }
   ],
   "buildPresets": [
@@ -38,12 +67,34 @@
     {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "dist",
+      "configurePreset": "dist"
+    },
+    {
+      "name": "dist-windows",
+      "configurePreset": "dist-windows"
     }
   ],
   "testPresets": [
     {
       "name": "dev",
       "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "dist",
+      "configurePreset": "dist",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "dist-windows",
+      "configurePreset": "dist-windows",
       "output": {
         "outputOnFailure": true
       }
