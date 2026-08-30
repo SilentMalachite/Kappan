@@ -39,6 +39,11 @@ ctest --preset dev --output-on-failure
 cmake --preset release
 cmake --build --preset release
 
+# 配布用の自己完結ビルド（Windows は dist-windows）
+cmake --preset dist
+cmake --build --preset dist
+ctest --preset dist --output-on-failure
+
 # 実行
 ./build/dev/kappan build   --source examples/blog --out _site
 ./build/dev/kappan serve   --source examples/blog --port 8080 --watch
@@ -47,8 +52,12 @@ cmake --build --preset release
 
 - ビルドシステム: **CMake 3.28+ / Ninja / CMakePresets.json**
 - 依存管理: **vcpkg manifest モード**（`vcpkg.json`）
-- コンパイラ: AppleClang 15+ / GCC 13+ / MSVC 19.38+
+- コンパイラ: `std::format` と `std::jthread` を使うため下限が高い
+  - macOS: Xcode 26 以降（Xcode 16.4 の libc++ には `std::jthread` が無い）
+  - Linux: GCC 13 以降（GCC 12 には `<format>` が無い）
+  - Windows: MSVC のみ。MinGW / Clang は `x64-windows` triplet と ABI が合わず、構成時に止める
 - **プリセット外のビルドコマンドを新設しない**。必要なら `CMakePresets.json` に追加する。
+- 配布関連は `KAPPAN_DIST` の下にまとめる（[ADR-0011](docs/adr/0011-release-distribution.md)）。
 
 ---
 
@@ -60,9 +69,21 @@ kappan/
 ├── CMakePresets.json
 ├── vcpkg.json
 ├── AGENTS.md / CLAUDE.md
+├── README.md / CHANGELOG.md / CONTRIBUTING.md / SECURITY.md / CODE_OF_CONDUCT.md
+│                       # 英語が正本。日本語版は *.ja.md
+├── .gitattributes      # ワークツリーの改行を LF に固定する（Windows の CRLF 変換対策）
+├── .github/
+│   ├── workflows/      # ci.yml（3 OS）/ release.yml（配布 4 環境 + タグ公開）
+│   ├── ISSUE_TEMPLATE/
+│   └── PULL_REQUEST_TEMPLATE.md
+├── cmake/
+│   ├── embed_theme.cmake       # themes/default をヘッダへ埋め込む
+│   ├── dist_smoke.cmake        # 実行ファイル実体で golden を突き合わせる
+│   └── dist_selfcontained.cmake # 配布バイナリの依存を許可リストで検証する
 ├── docs/
-│   ├── spec/           # 機能仕様
-│   └── adr/            # 設計判断の記録（ADR-0001.md ...）
+│   ├── spec/           # 機能仕様（英語・正本）
+│   ├── adr/            # 設計判断の記録（英語・正本。ADR-0001.md ...）
+│   └── ja/             # spec と adr の日本語版
 ├── include/kappan/     # 公開ヘッダのみ
 ├── src/
 │   ├── main.cpp        # CLI 入口。ここだけが例外を捕捉する
@@ -167,6 +188,9 @@ LP を特別扱いしない。**front matter の `layout:` がテンプレート
 ## 7. テスト
 
 - フレームワーク: **Catch2 v3**。実行は `ctest --preset dev`
+- Catch2 の外で動くテストが 2 つある。どちらも `cmake -P` のスクリプトで、3 OS で同じものが走る
+  - `dist_smoke` — 実行ファイル実体に `examples/` を生成させ golden と突き合わせる。全プリセットで登録し、CLI 経路（引数解析・出力先判定・終了コード）を被覆する
+  - `dist_selfcontained` — 配布バイナリの依存を許可リストと突き合わせる。`KAPPAN_DIST=ON` のときだけ登録する
 - 新機能には必ずテストを添える。**テストなしの機能追加は完了と見なさない**
 - ゴールデンテスト: `tests/golden/<case>/` に入力サイトと `expected/` を置き、生成結果と比較
 - **フィクスチャには日本語（かな・漢字）、絵文字、半角/全角混在を必ず含める**
@@ -228,8 +252,13 @@ LP を特別扱いしない。**front matter の `layout:` がテンプレート
 type: `feat` / `fix` / `refactor` / `test` / `docs` / `build` / `chore`
 
 ### 言語
-- 応答・コミットメッセージ・コメント・ドキュメント: **日本語**
+- 応答・コミットメッセージ・コード内コメント: **日本語**
 - 識別子・ファイル名: **英語**
+- 公開ドキュメント（`README` / `CHANGELOG` / `CONTRIBUTING` / `SECURITY` / `docs/spec` / `docs/adr`):
+  **英語が正本**。日本語版を `*.ja.md` と `docs/ja/` に対応させて置く。
+  片方だけ更新しない。挙動を変えたら `docs/spec/` の両方を、設計判断をしたら `docs/adr/` の両方を更新する
+- `AGENTS.md` と `CLAUDE.md` はエージェント向けの内部ハンドブックなので日本語のまま。
+  貢献者に見せる内容は `CONTRIBUTING.md` に英語で出す
 
 ---
 
