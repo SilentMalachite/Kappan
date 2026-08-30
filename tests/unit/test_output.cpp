@@ -16,6 +16,18 @@
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <string>
+
+namespace {
+
+// 読み終えたらすぐ閉じる。Windows は開いたままのファイルを削除できないため、
+// 呼び出し側の remove_all が「別のプロセスが使用中」で失敗する。
+[[nodiscard]] std::string read_bytes(const std::filesystem::path &path) {
+  std::ifstream in(path, std::ios::binary);
+  return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+} // namespace
 
 TEST_CASE("xml_escape converts XML special characters") {
   REQUIRE(kappan::output::xml_escape("A&B <c> \"'\"") == "A&amp;B &lt;c&gt; &quot;&apos;&quot;");
@@ -146,11 +158,9 @@ TEST_CASE("copy_static copies Japanese filenames and raw bytes") {
   REQUIRE(errors.empty());
   const auto copied = out / "images" / kappan::util::from_utf8("🐙.svg");
   REQUIRE(std::filesystem::exists(copied));
-  std::ifstream in(copied, std::ios::binary);
-  const std::string got{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+  const auto got = read_bytes(copied);
   REQUIRE(got.find("svg") != std::string::npos);
-  std::ifstream bin_in(out / "blob.bin", std::ios::binary);
-  const std::string raw{std::istreambuf_iterator<char>(bin_in), std::istreambuf_iterator<char>()};
+  const auto raw = read_bytes(out / "blob.bin");
   REQUIRE(raw.size() == 4);
   REQUIRE(static_cast<unsigned char>(raw[2]) == 0xFF);
   REQUIRE_FALSE(std::filesystem::exists(out / kappan::util::from_utf8("_隠し") / "nope.css"));
