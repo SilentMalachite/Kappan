@@ -37,8 +37,8 @@ sha256sum -c SHA256SUMS --ignore-missing   # macOS は shasum -a 256 -c
 展開すると `kappan-<version>-<target>/` の下に実行ファイルと `README.md` と `LICENSE` が出ます。実行ファイルを PATH の通ったディレクトリへ移します。
 
 ```bash
-tar -xzf kappan-0.1.0-macos-arm64.tar.gz
-sudo mv kappan-0.1.0-macos-arm64/kappan /usr/local/bin/
+tar -xzf kappan-0.1.1-macos-arm64.tar.gz
+sudo mv kappan-0.1.1-macos-arm64/kappan /usr/local/bin/
 ```
 
 macOS では、配布バイナリに署名していないため（[ADR-0011](docs/ja/adr/0011-release-distribution.md)）、Gatekeeper が quarantine 属性を見て実行を止めます。1 度だけ属性を外してください。
@@ -50,7 +50,7 @@ xattr -d com.apple.quarantine /usr/local/bin/kappan
 導入できたか確認します。
 
 ```bash
-kappan --version   # 0.1.0
+kappan --version   # 0.1.1
 ```
 
 テーマはバイナリに埋め込まれているため、別途置くデータファイルはありません。

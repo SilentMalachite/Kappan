@@ -5,6 +5,27 @@ and versioning follows [Semantic Versioning](https://semver.org/).
 
 *日本語版: [CHANGELOG.ja.md](CHANGELOG.ja.md)*
 
+## [0.1.1] - 2026-08-30
+
+Documentation only. The binary behaves exactly as 0.1.0 does.
+
+### Changed
+
+- The `README.md` bundled in the release archives is now the English one, which is
+  canonical from this release on. Japanese lives alongside it as `README.ja.md`
+- `docs/spec/` and `docs/adr/` are English; `docs/ja/` mirrors them in Japanese
+
+### Added
+
+- `CONTRIBUTING.md`, `SECURITY.md`, and `CODE_OF_CONDUCT.md`, each with a Japanese counterpart
+- Issue forms and a pull request template
+
+### Fixed
+
+- The compiler requirements stated in the README and `AGENTS.md` were wrong. Phase 8
+  measured the real floors: Xcode 26+ on macOS, GCC 13+ on Linux, and MSVC on Windows.
+  Xcode 16.4 has no `std::jthread` and GCC 12 has no `<format>`
+
 ## [0.1.0] - 2026-08-30
 
 First release.
@@ -41,4 +62,5 @@ First release.
   run; see the Install section of the README
 - The distribution decisions are recorded in [ADR-0011](docs/adr/0011-release-distribution.md)
 
+[0.1.1]: https://github.com/SilentMalachite/Kappan/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/SilentMalachite/Kappan/releases/tag/v0.1.0

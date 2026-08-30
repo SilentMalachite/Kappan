@@ -37,8 +37,8 @@ sha256sum -c SHA256SUMS --ignore-missing   # macOS: shasum -a 256 -c
 Extracting gives you `kappan-<version>-<target>/` containing the executable, `README.md`, and `LICENSE`. Move the executable somewhere on your `PATH`.
 
 ```bash
-tar -xzf kappan-0.1.0-macos-arm64.tar.gz
-sudo mv kappan-0.1.0-macos-arm64/kappan /usr/local/bin/
+tar -xzf kappan-0.1.1-macos-arm64.tar.gz
+sudo mv kappan-0.1.1-macos-arm64/kappan /usr/local/bin/
 ```
 
 On macOS the distributed binaries are not signed (see [ADR-0011](docs/adr/0011-release-distribution.md)), so Gatekeeper blocks them based on the quarantine attribute. Clear it once.
@@ -50,7 +50,7 @@ xattr -d com.apple.quarantine /usr/local/bin/kappan
 Check the install:
 
 ```bash
-kappan --version   # 0.1.0
+kappan --version   # 0.1.1
 ```
 
 The theme is embedded in the binary, so there are no extra data files to place.

@@ -5,6 +5,27 @@
 
 *English (canonical): [CHANGELOG.md](CHANGELOG.md)*
 
+## [0.1.1] - 2026-08-30
+
+ドキュメントのみの変更です。バイナリの挙動は 0.1.0 と同じです。
+
+### 変更
+
+- リリースアーカイブに同梱する `README.md` を英語版に差し替えました。本リリース以降、
+  英語が正本です。日本語版は `README.ja.md` として並べています
+- `docs/spec/` と `docs/adr/` を英語にし、`docs/ja/` に日本語版を対応させました
+
+### 追加
+
+- `CONTRIBUTING.md` / `SECURITY.md` / `CODE_OF_CONDUCT.md`。いずれも日本語版付き
+- issue フォームと pull request テンプレート
+
+### 修正
+
+- README と `AGENTS.md` が示していたコンパイラ要件が誤っていました。フェーズ 8 で
+  実測した下限は macOS が Xcode 26 以降、Linux が GCC 13 以降、Windows は MSVC です。
+  Xcode 16.4 には `std::jthread` が、GCC 12 には `<format>` がありません
+
 ## [0.1.0] - 2026-08-30
 
 最初のリリース。
@@ -39,4 +60,5 @@
   手順は README の「インストール」節にあります
 - 配布方針の判断は [ADR-0011](docs/ja/adr/0011-release-distribution.md) に記録しています
 
+[0.1.1]: https://github.com/SilentMalachite/Kappan/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/SilentMalachite/Kappan/releases/tag/v0.1.0
