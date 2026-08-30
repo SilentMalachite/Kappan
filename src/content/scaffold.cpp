@@ -64,6 +64,7 @@ Result<void> create_site(const std::filesystem::path &dir) {
       {dir / "templates" / "page.html", render::embedded::page_html},
       {dir / "templates" / "index.html", render::embedded::index_html},
       {dir / "templates" / "tag.html", render::embedded::tag_html},
+      {dir / "templates" / "landing.html", render::embedded::landing_html},
   };
 
   for (const auto &[path, text] : files) {
