@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -17,6 +18,13 @@ std::filesystem::path temp_file(const std::string &name) {
   auto path = std::filesystem::temp_directory_path() / name;
   std::filesystem::remove(path);
   return path;
+}
+
+// 読み終えたらすぐ閉じる。Windows は開いたままのファイルを削除できないため、
+// 呼び出し側の remove が「別のプロセスが使用中」で失敗する。
+[[nodiscard]] std::vector<char> read_bytes(const std::filesystem::path &path) {
+  std::ifstream in(path, std::ios::binary);
+  return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }
 
 } // namespace
@@ -88,8 +96,7 @@ TEST_CASE("write_utf8_file does not emit a BOM") {
   const auto written = kappan::util::write_utf8_file(path, "<p>日本語 🐙</p>\n");
   REQUIRE(written);
 
-  std::ifstream in(path, std::ios::binary);
-  std::vector<char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  const auto bytes = read_bytes(path);
   REQUIRE(bytes.size() >= 3);
   const bool has_bom = static_cast<unsigned char>(bytes[0]) == 0xEF &&
                        static_cast<unsigned char>(bytes[1]) == 0xBB &&
