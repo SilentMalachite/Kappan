@@ -1,5 +1,7 @@
 # コレクション・タグ・ページネーション
 
+> English (canonical): [`docs/spec/collections.md`](../../spec/collections.md)
+
 `Site` がテンプレートに渡す根。`Document` は構築後に書き換えない。
 
 ## コレクション

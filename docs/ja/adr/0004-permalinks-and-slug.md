@@ -1,5 +1,7 @@
 # ADR-0004: permalink と日本語 slug
 
+> English (canonical): [`docs/adr/0004-permalinks-and-slug.md`](../../adr/0004-permalinks-and-slug.md)
+
 - Status: Accepted
 - Date: 2026-08-29
 

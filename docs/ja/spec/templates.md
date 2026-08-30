@@ -1,5 +1,7 @@
 # テンプレート
 
+> English (canonical): [`docs/spec/templates.md`](../../spec/templates.md)
+
 `layout:` の値がテンプレートファイル名になる。`post` → `post.html`。共通骨格は `base.html` で、`{% extends "base.html" %}` と `{% block content %}` を使う。
 
 探索順:

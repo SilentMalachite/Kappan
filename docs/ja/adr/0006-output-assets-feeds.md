@@ -1,5 +1,7 @@
 # ADR-0006: 静的アセットとフィードの置き方
 
+> English (canonical): [`docs/adr/0006-output-assets-feeds.md`](../../adr/0006-output-assets-feeds.md)
+
 - Status: Accepted
 - Date: 2026-08-29
 

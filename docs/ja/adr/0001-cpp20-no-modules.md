@@ -1,5 +1,7 @@
 # ADR-0001: C++20 を使い、modules は使わない
 
+> English (canonical): [`docs/adr/0001-cpp20-no-modules.md`](../../adr/0001-cpp20-no-modules.md)
+
 - Status: Accepted
 - Date: 2026-08-28
 

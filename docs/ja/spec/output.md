@@ -1,5 +1,7 @@
 # 出力（静的アセット・sitemap・RSS）
 
+> English (canonical): [`docs/spec/output.md`](../../spec/output.md)
+
 Phase 5。レンダリング結果を `--out` に書き、公開に必要なファイルを添える。後段は前段（`Site` / `RenderedPage`）を書き換えない。
 
 ## 出力先の準備

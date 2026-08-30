@@ -1,5 +1,7 @@
 # ADR-0008: sitemap の `<lastmod>` は W3C Datetime にする
 
+> English (canonical): [`docs/adr/0008-sitemap-lastmod-format.md`](../../adr/0008-sitemap-lastmod-format.md)
+
 - Status: Accepted
 - Date: 2026-08-29
 - 関連: [ADR-0006](0006-output-assets-feeds.md)

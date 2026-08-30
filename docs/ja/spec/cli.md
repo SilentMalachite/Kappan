@@ -1,5 +1,7 @@
 # CLI
 
+> English (canonical): [`docs/spec/cli.md`](../../spec/cli.md)
+
 ## 共通
 
 ```

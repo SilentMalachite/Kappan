@@ -1,5 +1,7 @@
 # Landing pages
 
+> English (canonical): [`docs/spec/landing.md`](../../spec/landing.md)
+
 Phase 7。LP は `layout: landing` を持つ通常の Markdown ページとして扱う。専用の CLI もパイプラインも無い（[ADR-0010](../adr/0010-landing-frontmatter.md)）。
 
 - 出力先は既存の pretty URL 規則に従う。`content/index.md` なら `/`、`content/lp.md` なら `/lp/`。

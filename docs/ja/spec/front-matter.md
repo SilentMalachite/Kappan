@@ -1,5 +1,7 @@
 # Front matter
 
+> English (canonical): [`docs/spec/front-matter.md`](../../spec/front-matter.md)
+
 先頭行が `---` のとき、次の `---` までを YAML、残りを Markdown 本文とする。CRLF は読み込み時に LF へ正規化済み。`---` が無いファイルは front matter なし。閉じ `---` が無い・YAML が壊れている場合は落ちずに `ErrorCode::FrontMatter` を集約する。
 
 | キー | 型 | 既定 |

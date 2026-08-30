@@ -1,5 +1,7 @@
 # ADR-0007: `--out` を消してよい条件
 
+> English (canonical): [`docs/adr/0007-out-dir-deletion-policy.md`](../../adr/0007-out-dir-deletion-policy.md)
+
 - Status: Accepted
 - Date: 2026-08-29
 - 関連: [ADR-0006](0006-output-assets-feeds.md)（この ADR が `--out` の扱いを上書きする）

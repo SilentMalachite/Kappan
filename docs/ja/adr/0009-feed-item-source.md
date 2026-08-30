@@ -1,5 +1,7 @@
 # ADR-0009: feed に載せるのは書き出しに成功した記事だけにする
 
+> English (canonical): [`docs/adr/0009-feed-item-source.md`](../../adr/0009-feed-item-source.md)
+
 - Status: Accepted
 - Date: 2026-08-29
 - 関連: [ADR-0006](0006-output-assets-feeds.md)

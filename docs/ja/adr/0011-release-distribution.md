@@ -1,5 +1,7 @@
 # ADR-0011: 配布は GitHub Releases に限り、自己完結性は ctest で検証する
 
+> English (canonical): [`docs/adr/0011-release-distribution.md`](../../adr/0011-release-distribution.md)
+
 - Status: Accepted
 - Date: 2026-08-30
 - 関連: [ADR-0001](0001-cpp20-no-modules.md)

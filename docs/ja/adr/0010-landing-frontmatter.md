@@ -1,5 +1,7 @@
 # ADR-0010: landing の front matter は型付きで持ち、OGP は全レイアウトに出す
 
+> English (canonical): [`docs/adr/0010-landing-frontmatter.md`](../../adr/0010-landing-frontmatter.md)
+
 - Status: Accepted
 - Date: 2026-08-30
 - 関連: [ADR-0005](0005-site-collections.md), [ADR-0006](0006-output-assets-feeds.md)

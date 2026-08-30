@@ -1,5 +1,7 @@
 # ADR-0003: cmark-gfm の拡張と生 HTML
 
+> English (canonical): [`docs/adr/0003-gfm-extensions.md`](../../adr/0003-gfm-extensions.md)
+
 - Status: Accepted
 - Date: 2026-08-28
 

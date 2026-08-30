@@ -1,5 +1,7 @@
 # ADR-0005: Site モデルと生成ページ
 
+> English (canonical): [`docs/adr/0005-site-collections.md`](../../adr/0005-site-collections.md)
+
 - Status: Accepted
 - Date: 2026-08-29
 

@@ -1,5 +1,7 @@
 # site.yaml
 
+> English (canonical): [`docs/spec/site-yaml.md`](../../spec/site-yaml.md)
+
 サイト根にある YAML。Phase 2 の必須キーは `title` だけ。
 
 ```yaml

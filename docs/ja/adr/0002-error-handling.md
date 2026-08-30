@@ -1,5 +1,7 @@
 # ADR-0002: 想定内エラーは `tl::expected`、例外は main のみ
 
+> English (canonical): [`docs/adr/0002-error-handling.md`](../../adr/0002-error-handling.md)
+
 - Status: Accepted
 - Date: 2026-08-28
 
