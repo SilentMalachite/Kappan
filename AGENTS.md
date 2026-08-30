@@ -247,6 +247,7 @@ type: `feat` / `fix` / `refactor` / `test` / `docs` / `build` / `chore`
 | 5 | 静的アセット・`sitemap.xml`・RSS | 実サイトとして公開できる |
 | 6 | `serve --watch` 差分ビルド | 保存 1 秒以内にブラウザ反映 |
 | 7 | LP 対応（`layout: landing`、セクション部品、OGP） | `examples/landing` が生成される |
+| 8 | リリース配布（3 OS の CI 緑化、自己完結バイナリ、GitHub Releases） | `v0.1.0` タグで 4 環境のアーカイブが公開される |
 
 ---
 
