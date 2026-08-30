@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.28)
 
 project(kappan VERSION 0.1.0 LANGUAGES CXX)
 
+if(WIN32 AND NOT MSVC)
+  message(
+    FATAL_ERROR
+    "Windows では MSVC を使う。検出されたコンパイラ: ${CMAKE_CXX_COMPILER_ID}。"
+    "MinGW / Clang は vcpkg の x64-windows triplet（MSVC ABI）と一致せず、"
+    "Windows SDK 依存のヘッダも通らない")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

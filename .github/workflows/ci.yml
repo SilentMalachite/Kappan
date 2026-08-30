@@ -43,6 +43,14 @@ jobs:
           git -C "$env:GITHUB_WORKSPACE/../vcpkg" checkout FETCH_HEAD
           & "$env:GITHUB_WORKSPACE/../vcpkg/bootstrap-vcpkg.bat"
 
+      # Ninja ジェネレータは PATH の cl.exe を使う。
+      # 有効化しないと runner の MinGW が拾われ、x64-windows triplet と ABI が食い違う。
+      - name: Enable MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+
       - name: Configure
         run: cmake --preset dev -DKAPPAN_WARNINGS_AS_ERRORS=ON
 
