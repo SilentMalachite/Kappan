@@ -10,10 +10,10 @@ sections:
     text: Markdown と YAML だけで、ブログもLPも同じパイプラインから公開できます 🐙
     image: /images/og.svg
     actions:
-      - label: 機能を見る
-        href: "#features"
-      - label: サンプルを読む
-        href: "#story"
+      - label: フィードを購読
+        href: /feed.xml
+      - label: サイトマップを見る
+        href: /sitemap.xml
   - type: features
     eyebrow: Features
     title: 小さく、読みやすく、壊しにくく
