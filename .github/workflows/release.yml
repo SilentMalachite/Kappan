@@ -1,6 +1,9 @@
 name: release
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -15,15 +18,19 @@ jobs:
           - target: macos-arm64
             os: macos-15
             preset: dist
+            exe: ""
           - target: macos-x86_64
             os: macos-15-intel
             preset: dist
+            exe: ""
           - target: linux-x86_64
             os: ubuntu-22.04
             preset: dist
+            exe: ""
           - target: windows-x86_64
             os: windows-latest
             preset: dist-windows
+            exe: ".exe"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -98,6 +105,31 @@ jobs:
 
       - name: Install
         run: cmake --install build/dist --prefix stage
+
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="dev-${GITHUB_SHA:0:7}"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "アーカイブのバージョン: ${version}"
+
+      # project(kappan VERSION ...) と vcpkg.json の更新漏れをここで止める。
+      - name: Verify version matches tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          actual="$(stage/bin/kappan${{ matrix.exe }} --version | tr -d '[:space:]')"
+          expected="${GITHUB_REF_NAME#v}"
+          if [ "${actual}" != "${expected}" ]; then
+            echo "タグ ${GITHUB_REF_NAME} が示すバージョン '${expected}' と、kappan --version の出力 '${actual}' が一致しません。CMakeLists.txt の project(kappan VERSION ...) と vcpkg.json の version-semver を確認してください" >&2
+            exit 1
+          fi
+          echo "バージョン整合を確認しました: ${actual}"
 
       - uses: actions/upload-artifact@v4
         with:
