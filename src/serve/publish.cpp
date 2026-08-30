@@ -3,6 +3,7 @@
 #include "serve/watch.hpp"
 #include "util/path.hpp"
 
+#include <algorithm>
 #include <format>
 #include <fstream>
 #include <iterator>
