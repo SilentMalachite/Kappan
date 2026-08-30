@@ -28,7 +28,7 @@ struct NamedTheme {
 constexpr NamedTheme kEmbedded[] = {
     {"base.html", embedded::base_html}, {"post.html", embedded::post_html},
     {"page.html", embedded::page_html}, {"index.html", embedded::index_html},
-    {"tag.html", embedded::tag_html},
+    {"tag.html", embedded::tag_html},   {"landing.html", embedded::landing_html},
 };
 
 [[nodiscard]] int inja_line(const inja::SourceLocation &location) {

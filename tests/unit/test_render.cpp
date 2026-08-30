@@ -227,3 +227,39 @@ TEST_CASE("Engine omits og:url and relative og:image when site url is empty") {
   REQUIRE(page->html.find("data-og-image=\"\"") != std::string::npos);
   std::filesystem::remove_all(root);
 }
+
+TEST_CASE("Engine renders landing with the embedded default template") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-render-embedded-landing";
+  const auto content = root / "content";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(content);
+  {
+    std::ofstream yaml(root / "site.yaml", std::ios::binary);
+    yaml << "title: 活版LP\nurl: https://example.com\nlanguage: ja\n";
+  }
+  const auto source = content / "index.md";
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\n"
+           "title: LP\n"
+           "layout: landing\n"
+           "sections:\n"
+           "  - type: hero\n"
+           "    title: ヒーロー\n"
+           "    text: 本文\n"
+           "---\n"
+           "補足\n";
+  }
+  const auto config = kappan::config::load(root / "site.yaml");
+  REQUIRE(config);
+  const auto document = kappan::content::parse_document(source, *config);
+  REQUIRE(document);
+  auto engine = kappan::render::Engine::load(*config);
+  REQUIRE(engine);
+  auto site = kappan::site::build(*config, {*document}, kappan::DraftPolicy::Include);
+  const auto page = engine->render(site, site.documents.front());
+  REQUIRE(page);
+  REQUIRE(page->html.find("ヒーロー") != std::string::npos);
+  REQUIRE(page->html.find("og:type") != std::string::npos);
+  std::filesystem::remove_all(root);
+}

@@ -4,8 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ site.title }}{% endblock %}</title>
-  {% if site.description %}
+  {% if page.description != "" %}
+  <meta name="description" content="{{ page.description }}">
+  {% else if site.description != "" %}
   <meta name="description" content="{{ site.description }}">
+  {% endif %}
+  <meta property="og:title" content="{{ page.og.title }}">
+  {% if page.og.description != "" %}
+  <meta property="og:description" content="{{ page.og.description }}">
+  {% endif %}
+  <meta property="og:type" content="{{ page.og.type }}">
+  {% if page.og.url != "" %}
+  <meta property="og:url" content="{{ page.og.url }}">
+  {% endif %}
+  {% if page.og.image != "" %}
+  <meta property="og:image" content="{{ page.og.image }}">
+  <meta name="twitter:card" content="{{ page.og.twitter_card }}">
   {% endif %}
   <style>
     body { max-width: 40rem; margin: 1.5rem auto; padding: 0 1rem; line-height: 1.7; }

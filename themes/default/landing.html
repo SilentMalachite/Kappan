@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }} — {{ site.title }}{% endblock %}
+{% block content %}
+{% for section in page.sections %}
+<section>
+  {% if section.eyebrow != "" %}<p>{{ section.eyebrow }}</p>{% endif %}
+  {% if section.title != "" %}<h1>{{ section.title }}</h1>{% endif %}
+  {% if section.text != "" %}<p>{{ section.text }}</p>{% endif %}
+  {% if section.image != "" %}<img src="{{ section.image }}" alt="">{% endif %}
+  {% if section.actions %}
+  <p>
+    {% for action in section.actions %}
+    <a href="{{ action.href }}">{{ action.label }}</a>
+    {% endfor %}
+  </p>
+  {% endif %}
+  {% if section.items %}
+  <ul>
+    {% for item in section.items %}
+    <li>
+      {% if item.icon != "" %}<span aria-hidden="true">{{ item.icon }}</span>{% endif %}
+      {% if item.title != "" %}<strong>{{ item.title }}</strong>{% endif %}
+      {% if item.text != "" %}<span>{{ item.text }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endfor %}
+{% if page.content != "" %}
+<article>
+  {{ page.content }}
+</article>
+{% endif %}
+{% endblock %}

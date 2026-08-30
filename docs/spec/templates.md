@@ -66,4 +66,8 @@ LP 用と OGP 用の変数は次のとおり。詳しくは [Landing pages](land
 
 `page.og` は landing 専用ではなく、全レイアウト（`post` / `page` / `index` / `tag` / `landing`）に入る。一覧とタグページでは `page.image` は空、`page.sections` は空配列、`page.og.type` は `website` になる。`base.html` は `page.og` を読むだけで、値が空のときは meta 要素ごと出さない。
 
+空文字の判定は `{% if page.og.url != "" %}` のように明示的に比較する。inja の `{% if %}` は
+文字列を常に真として扱うため、`{% if page.og.url %}` では空文字を省けない。配列は空なら偽になるので、
+`{% if section.actions %}` はそのまま書いてよい。
+
 同梱ファイルは `base.html` / `post.html` / `page.html` / `index.html` / `tag.html` / `landing.html`。

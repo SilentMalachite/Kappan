@@ -29,6 +29,7 @@ set_property(
            ${KAPPAN_THEME_DIR}/page.html
            ${KAPPAN_THEME_DIR}/index.html
            ${KAPPAN_THEME_DIR}/tag.html
+           ${KAPPAN_THEME_DIR}/landing.html
            ${CMAKE_SOURCE_DIR}/cmake/embed_theme.cmake)
 execute_process(
   COMMAND ${CMAKE_COMMAND} -DINPUT_DIR=${KAPPAN_THEME_DIR} -DOUTPUT=${KAPPAN_EMBEDDED_THEME} -P
