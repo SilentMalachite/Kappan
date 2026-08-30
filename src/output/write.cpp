@@ -3,10 +3,14 @@
 #include "util/path.hpp"
 #include "util/utf8.hpp"
 
+#include <array>
 #include <format>
+#include <fstream>
 
 namespace kappan::output {
 namespace {
+
+constexpr std::string_view kOutMarkerContent = "kappan output directory\n";
 
 [[nodiscard]] bool contains_dotdot(const std::filesystem::path &rel) {
   for (const auto &part : rel) {
@@ -43,14 +47,52 @@ namespace {
       out_dir);
 }
 
-// 消してよい --out か。空、または前回 kappan が書いた印がある場合だけ真。
+[[nodiscard]] Result<bool> marker_content_matches(const std::filesystem::path &marker,
+                                                  const std::filesystem::path &out_dir) {
+  std::ifstream in(marker, std::ios::binary);
+  if (!in.is_open()) {
+    return tl::unexpected(
+        make_error(ErrorCode::Io,
+                   std::format("{}: 出力先マーカーの内容を読み取るために開けません",
+                               util::to_generic_utf8(marker)),
+                   out_dir));
+  }
+
+  std::array<char, kOutMarkerContent.size() + 1> bytes{};
+  in.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+  const auto count = in.gcount();
+  if (in.bad()) {
+    return tl::unexpected(make_error(
+        ErrorCode::Io,
+        std::format("{}: 出力先マーカーの内容を読み取れません", util::to_generic_utf8(marker)),
+        out_dir));
+  }
+
+  return count == static_cast<std::streamsize>(kOutMarkerContent.size()) &&
+         std::string_view{bytes.data(), kOutMarkerContent.size()} == kOutMarkerContent;
+}
+
+// 消してよい --out か。空、または前回 kappan が書いた有効な印がある場合だけ真。
 // 前回の出力で常に非空になるので「非空なら拒否」だけでは毎回 --force が要り、機能しない。
 [[nodiscard]] Result<bool> out_dir_is_reusable(const std::filesystem::path &out,
                                                const std::filesystem::path &out_dir) {
   std::error_code ec;
-  if (std::filesystem::exists(out / kOutMarker, ec)) {
-    return true;
+  const auto marker = out / kOutMarker;
+  const auto marker_status = std::filesystem::symlink_status(marker, ec);
+  if (!std::filesystem::status_known(marker_status)) {
+    return tl::unexpected(make_error(ErrorCode::Io,
+                                     std::format("{}: 出力先マーカーを確認できません: {}",
+                                                 util::to_generic_utf8(marker), ec.message()),
+                                     out_dir));
   }
+  if (std::filesystem::exists(marker_status)) {
+    if (std::filesystem::is_symlink(marker_status) ||
+        !std::filesystem::is_regular_file(marker_status)) {
+      return false;
+    }
+    return marker_content_matches(marker, out_dir);
+  }
+
   const bool empty = std::filesystem::is_empty(out, ec);
   if (ec) {
     return tl::unexpected(make_error(
@@ -111,8 +153,7 @@ namespace {
         out_dir));
   }
   // 印は作成直後に書く。途中で失敗しても次回の再ビルドが拒否されないようにするため。
-  return util::write_utf8_file(out / std::filesystem::path{kOutMarker},
-                               "kappan output directory\n");
+  return util::write_utf8_file(out / std::filesystem::path{kOutMarker}, kOutMarkerContent);
 }
 
 } // namespace

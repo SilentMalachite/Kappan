@@ -12,11 +12,13 @@ namespace kappan::output {
 
 using ClaimedOutputs = std::map<std::string, std::filesystem::path>;
 
-// kappan が書いた出力先である印。空でないディレクトリを消してよいかの判断に使う（ADR-0007）。
+// kappan が書いた出力先である印。非 symlink の通常ファイルで、内容が規定の raw bytes と
+// 完全一致するときだけ、空でないディレクトリを消してよいと判断する（ADR-0007）。
 inline constexpr std::string_view kOutMarker = ".kappan-out";
 
-// Refuse: --out が空でなく kOutMarker も無ければ、何も消さずに拒否する。
-// Force: それでも消す（--force）。ソースを守る 2 つの判定には効かない。
+// Refuse: --out が空でなく有効な kOutMarker も無ければ、何も消さずに拒否する。
+// マーカーを確認できない I/O 障害でも消さない。
+// Force: マーカー検証を迂回して消す（--force）。ソースを守る 2 つの判定には効かない。
 enum class OutDirPolicy { Refuse, Force };
 
 [[nodiscard]] Result<void> prepare_out_dir(const std::filesystem::path &source,

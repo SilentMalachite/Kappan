@@ -26,17 +26,19 @@ kappan build --source s --out precious
 
 ## 決定
 
-**出力根にマーカーファイルを置き、それが無い非空ディレクトリは消さない。**
+**出力根にマーカーファイルを置き、有効なマーカーが無い非空ディレクトリは消さない。**
 
 - マーカーは `<out>/.kappan-out`。中身は固定の 1 行 `kappan output directory` + 改行。生成時刻やバージョンは入れない（ゴールデンに差分を出さないため）。
+- マーカーが有効なのは、この順に、ディレクトリエントリーが symbolic link ではなく、通常ファイルであり、raw bytes が `kappan output directory\n`（24 bytes）と完全一致するときだけ。BOM 除去や改行正規化はしない。status または内容を検査できなければ `ErrorCode::Io`、不正と確認できたマーカーなら `ErrorCode::Cli` で拒否し、どちらも何も消さない。
 - `prepare_out_dir` の判断順:
   1. 既存の 3 チェック（`--out` == source / source が `--out` の内側 / `--out` が既存ファイル）。ここで拒否したときは**何も消さない**。従来どおり。
   2. `--out` が存在しない → 作る。
   3. `--out` が空 → そのまま使う。
-  4. `--out` が非空 かつ `.kappan-out` がある → 従来どおり `remove_all` + `create_directories`。
-  5. `--out` が非空 かつ `.kappan-out` が無い → `ErrorCode::Cli` で拒否し、**何も消さない**。
+  4. `--out` が非空 かつ有効な `.kappan-out` がある → 従来どおり `remove_all` + `create_directories`。
+  5. `--out` が非空 かつ `.kappan-out` が無い、または不正と確認できた → `ErrorCode::Cli` で拒否し、**何も消さない**。
+  6. 出力先の空判定、マーカーの status、またはマーカーの内容を検査できない → `ErrorCode::Io` で失敗し、**何も消さない**。
 - マーカーは `create_directories` の直後に書く。ビルドが途中で失敗しても次回の再ビルドが 4 に入るようにするため。
-- `build` に `--force` フラグを足す。5 の場合でも削除する。`--force` は 1 の 3 チェックには効かない（ソースは常に守る）。
+- `build` に `--force` フラグを足す。マーカー検証を迂回し、5 の場合でも削除する。`--force` は 1 の 3 チェックには効かない（ソースは常に守る）。
 - 5 のメッセージは、次に何をすればよいかを含める:
 
   ```

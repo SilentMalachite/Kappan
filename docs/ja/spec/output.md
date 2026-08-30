@@ -13,14 +13,17 @@ Phase 5。レンダリング結果を `--out` に書き、公開に必要なフ�
 
 `--out` が `--source` の内側（`examples/blog/_site`）はよい。
 
-消す前に、その `--out` が kappan の出力先かを確かめる。出力根に `.kappan-out`（固定の 1 行）を書いておき、次の判断に使う。
+消す前に、その `--out` が kappan の出力先かを確かめる。出力根に `.kappan-out` を書いておき、次の判断に使う。
 
 | `--out` の状態 | 動作 |
 |---|---|
 | 無い | 作る |
 | 空 | そのまま使う |
-| 非空で `.kappan-out` がある | 消して作り直す |
-| 非空で `.kappan-out` が無い | **何も消さず** `ErrorCode::Cli`。`--force` でのみ消す |
+| 非空で有効な `.kappan-out` がある | 消して作り直す |
+| 非空で `.kappan-out` が無い、または不正と確認できた | **何も消さず** `ErrorCode::Cli`。`--force` でのみ消す |
+| 出力先の空判定、マーカーの status、またはマーカーの内容を検査できない | **何も消さず** `ErrorCode::Io` |
+
+有効なマーカーは、symlink ではない通常ファイルで、raw bytes が `kappan output directory\n`（24 bytes）と完全一致するものだけ。UTF-8 BOM、CRLF、余分な byte が 1 つでもあれば不一致であり、BOM 除去や改行正規化はしない。マーカーの status または内容を検査できないときは何も消さず `ErrorCode::Io`。`--force` は互換性のためマーカー検証を迂回するが、上のソース保護判定は迂回しない。
 
 `.kappan-out` は `create_directories` の直後に書く。ビルドが途中で失敗しても次回が拒否されないようにするため。詳細は [ADR-0007](../adr/0007-out-dir-deletion-policy.md)。
 

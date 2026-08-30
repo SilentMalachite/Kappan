@@ -9,6 +9,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <set>
 
 #include <chrono>
@@ -17,6 +18,7 @@
 #include <iterator>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -25,6 +27,17 @@ namespace {
 [[nodiscard]] std::string read_bytes(const std::filesystem::path &path) {
   std::ifstream in(path, std::ios::binary);
   return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+void write_bytes(const std::filesystem::path &path, std::string_view bytes) {
+  std::ofstream out(path, std::ios::binary);
+  REQUIRE(out.is_open());
+  out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+  REQUIRE(out.good());
+}
+
+void require_wedding_photo_remains(const std::filesystem::path &out) {
+  REQUIRE(read_bytes(out / "photos" / "wedding.jpg") == "かけがえのない\n");
 }
 
 } // namespace
@@ -491,8 +504,9 @@ TEST_CASE("prepare_out_dir accepts an empty directory and leaves its marker") {
   std::filesystem::create_directories(out);
 
   REQUIRE(kappan::output::prepare_out_dir(source, out));
-  const auto marker = out / std::filesystem::path{kappan::output::kOutMarker};
+  const auto marker = out / ".kappan-out";
   REQUIRE(std::filesystem::exists(marker));
+  REQUIRE(read_bytes(marker) == "kappan output directory\n");
 
   // 印があるので 2 回目以降は素通りする（毎回 --force が要らない）
   {
@@ -502,6 +516,111 @@ TEST_CASE("prepare_out_dir accepts an empty directory and leaves its marker") {
   REQUIRE(kappan::output::prepare_out_dir(source, out));
   REQUIRE_FALSE(std::filesystem::exists(out / "index.html"));
   REQUIRE(std::filesystem::exists(marker));
+
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("prepare_out_dir rejects spoofed output markers without deleting data") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-out-spoofed-marker";
+  std::filesystem::remove_all(root);
+  const auto source = root / "site";
+  const auto out = root / "precious";
+  const auto marker = out / ".kappan-out";
+  std::filesystem::create_directories(source);
+  std::filesystem::create_directories(out / "photos");
+  write_bytes(out / "photos" / "wedding.jpg", "かけがえのない\n");
+
+  const std::array invalid_markers{
+      std::pair{"same length wrong bytes", std::string_view{"Kappan output directory\n"}},
+      std::pair{"UTF-8 BOM", std::string_view{"\xEF\xBB\xBFkappan output directory\n"}},
+      std::pair{"CRLF", std::string_view{"kappan output directory\r\n"}},
+      std::pair{"extra byte", std::string_view{"kappan output directory\nx"}},
+  };
+
+  for (const auto &[name, bytes] : invalid_markers) {
+    DYNAMIC_SECTION(name) {
+      write_bytes(marker, bytes);
+      const auto result = kappan::output::prepare_out_dir(source, out);
+      REQUIRE_FALSE(result);
+      REQUIRE(result.error().code == kappan::ErrorCode::Cli);
+      require_wedding_photo_remains(out);
+    }
+  }
+
+  SECTION("marker is a directory") {
+    std::filesystem::create_directories(marker);
+    const auto result = kappan::output::prepare_out_dir(source, out);
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().code == kappan::ErrorCode::Cli);
+    require_wedding_photo_remains(out);
+  }
+
+  SECTION("marker is a symlink") {
+    const auto real_marker = out / "real-marker";
+    write_bytes(real_marker, "kappan output directory\n");
+    std::error_code ec;
+    std::filesystem::create_symlink(real_marker, marker, ec);
+    CAPTURE(ec.message());
+    REQUIRE_FALSE(ec);
+
+    const auto result = kappan::output::prepare_out_dir(source, out);
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().code == kappan::ErrorCode::Cli);
+    require_wedding_photo_remains(out);
+    REQUIRE(std::filesystem::is_symlink(std::filesystem::symlink_status(marker)));
+    REQUIRE(read_bytes(real_marker) == "kappan output directory\n");
+  }
+
+  SECTION("force bypasses an invalid marker") {
+    write_bytes(marker, "Kappan output directory\n");
+    const auto result =
+        kappan::output::prepare_out_dir(source, out, kappan::output::OutDirPolicy::Force);
+    REQUIRE(result);
+    REQUIRE(std::filesystem::is_directory(out));
+    REQUIRE_FALSE(std::filesystem::exists(out / "photos" / "wedding.jpg"));
+    REQUIRE(read_bytes(marker) == "kappan output directory\n");
+  }
+
+#ifndef _WIN32
+  SECTION("marker cannot be read") {
+    write_bytes(marker, "kappan output directory\n");
+    std::error_code ec;
+    std::filesystem::permissions(marker, std::filesystem::perms::none,
+                                 std::filesystem::perm_options::replace, ec);
+    CAPTURE(ec.message());
+    REQUIRE_FALSE(ec);
+
+    const auto result = kappan::output::prepare_out_dir(source, out);
+    if (std::filesystem::exists(marker)) {
+      std::filesystem::permissions(marker, std::filesystem::perms::owner_all,
+                                   std::filesystem::perm_options::replace, ec);
+      CAPTURE(ec.message());
+      REQUIRE_FALSE(ec);
+    }
+
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().code == kappan::ErrorCode::Io);
+    require_wedding_photo_remains(out);
+  }
+#endif
+
+  SECTION("marker is larger than one MiB") {
+    std::ofstream large(marker, std::ios::binary);
+    REQUIRE(large.is_open());
+    large << "kappan output directory\n";
+    std::array<char, 4096> chunk{};
+    chunk.fill('x');
+    for (std::size_t count = 0; count < 257; ++count) {
+      large.write(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+    }
+    REQUIRE(large.good());
+    large.close();
+
+    const auto result = kappan::output::prepare_out_dir(source, out);
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().code == kappan::ErrorCode::Cli);
+    require_wedding_photo_remains(out);
+  }
 
   std::filesystem::remove_all(root);
 }

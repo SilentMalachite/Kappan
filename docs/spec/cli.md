@@ -27,7 +27,8 @@ kappan build --source <site-root> --out <dir> [--drafts] [--force]
 - Without `--drafts`, documents with `draft: true` are not written.
 - A UTF-8 BOM in the input is dropped and never written to the output. CRLF is normalised to LF.
 - `--out` is emptied before writing. If `--out` equals the source root, or the source lives inside `--out`, the command fails with `ErrorCode::Cli`.
-- If `--out` is non-empty and carries no kappan output marker (`.kappan-out`), the command refuses with `ErrorCode::Cli` **without deleting anything**. Only `--force` allows the deletion. `--force` does not affect the two checks above — the source is always protected.
+- If `--out` is non-empty and its [kappan output marker](output.md#preparing-the-output-directory) is absent or confirmed invalid, the command refuses with `ErrorCode::Cli` **without deleting anything**. Only `--force` allows the deletion.
+- If the output-directory state or marker status/content cannot be inspected, the command fails with `ErrorCode::Io` and deletes nothing, as detailed in [output.md](output.md#preparing-the-output-directory). `--force` bypasses marker validation but does not affect the two source-protection checks above — the source is always protected.
 - See [output.md](output.md) for details.
 
 ## `kappan serve`

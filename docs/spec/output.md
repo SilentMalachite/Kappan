@@ -13,14 +13,17 @@ Phase 5. Writes the rendered result to `--out` and adds the files needed for pub
 
 `--out` inside `--source` (`examples/blog/_site`) is fine.
 
-Before deleting, kappan checks that `--out` really is one of its own output directories. It writes `.kappan-out` (a fixed single line) at the output root and uses it to decide:
+Before deleting, kappan checks that `--out` really is one of its own output directories. It writes `.kappan-out` at the output root and uses it to decide:
 
 | State of `--out` | Behaviour |
 |---|---|
 | Missing | Create it |
 | Empty | Use it as-is |
-| Non-empty with `.kappan-out` | Delete and recreate |
-| Non-empty without `.kappan-out` | **Delete nothing** and fail with `ErrorCode::Cli`. Only `--force` deletes |
+| Non-empty with a valid `.kappan-out` | Delete and recreate |
+| Non-empty with no `.kappan-out`, or a confirmed invalid marker | **Delete nothing** and fail with `ErrorCode::Cli`. Only `--force` deletes |
+| Output-directory emptiness, marker status, or marker content cannot be inspected | **Delete nothing** and fail with `ErrorCode::Io` |
+
+A valid marker is a non-symlink regular file whose raw bytes are exactly `kappan output directory\n` (24 bytes). A UTF-8 BOM, CRLF, or any extra byte is a mismatch; kappan performs no BOM removal or newline normalisation. If the marker status or content cannot be inspected, kappan deletes nothing and fails with `ErrorCode::Io`. `--force` bypasses marker validation for compatibility, but never bypasses the source-protection checks above.
 
 `.kappan-out` is written immediately after `create_directories`, so that a build failing part-way through does not cause the next run to be refused. See [ADR-0007](../adr/0007-out-dir-deletion-policy.md).
 

@@ -27,7 +27,8 @@ kappan build --source <site-root> --out <dir> [--drafts] [--force]
 - `--drafts` が無いとき `draft: true` の記事は出力しない。
 - 入力の UTF-8 BOM は読み捨て、出力には付けない。CRLF は LF に正規化する。
 - 書き出し前に `--out` を空にする。`--out` がソース根と同じ、またはソースが `--out` の内側なら `ErrorCode::Cli`。
-- `--out` が空でなく、kappan の出力先である印（`.kappan-out`）も無い場合は、**何も消さずに** `ErrorCode::Cli` で拒否する。`--force` を付けたときだけ消す。`--force` は上の 2 つの判定には効かない（ソースは常に守る）。
+- `--out` が空でなく、[kappan の出力先マーカー](output.md#出力先の準備)（`.kappan-out`）が無い、または不正と確認できた場合は、**何も消さずに** `ErrorCode::Cli` で拒否する。`--force` を付けたときだけ消す。
+- 出力先の状態、またはマーカーの status・内容を検査できない場合は、[output.md](output.md#出力先の準備) のとおり何も消さず `ErrorCode::Io` で失敗する。`--force` はマーカー検証を迂回するが、上の 2 つのソース保護判定には効かない（ソースは常に守る）。
 - 詳細は [output.md](output.md)。
 
 ## `kappan serve`

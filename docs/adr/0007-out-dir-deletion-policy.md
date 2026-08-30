@@ -26,17 +26,19 @@ A simple "refuse when non-empty" does not work: `--out` is always non-empty from
 
 ## Decision
 
-**Write a marker file at the output root, and never delete a non-empty directory that lacks it.**
+**Write a marker file at the output root, and never delete a non-empty directory that lacks a valid marker.**
 
 - The marker is `<out>/.kappan-out`. Its content is the fixed single line `kappan output directory` plus a newline. No timestamp and no version, so it produces no diff in the golden files.
+- A marker is valid only when, in this order, the directory entry is not a symbolic link, it is a regular file, and its raw bytes match exactly `kappan output directory\n` (24 bytes). No BOM removal or newline normalisation is applied. If its status or content cannot be inspected, fail with `ErrorCode::Io` and delete nothing; a confirmed invalid marker fails with `ErrorCode::Cli` and deletes nothing.
 - The order of decisions in `prepare_out_dir`:
   1. The three existing checks (`--out` == source, source inside `--out`, `--out` is an existing file). A refusal here **deletes nothing**, as before.
   2. `--out` does not exist → create it.
   3. `--out` is empty → use it as-is.
-  4. `--out` is non-empty and has `.kappan-out` → `remove_all` + `create_directories`, as before.
-  5. `--out` is non-empty and lacks `.kappan-out` → refuse with `ErrorCode::Cli` and **delete nothing**.
+  4. `--out` is non-empty and has a valid `.kappan-out` → `remove_all` + `create_directories`, as before.
+  5. `--out` is non-empty and `.kappan-out` is absent or confirmed invalid → refuse with `ErrorCode::Cli` and **delete nothing**.
+  6. The output-directory emptiness, marker status, or marker content cannot be inspected → fail with `ErrorCode::Io` and **delete nothing**.
 - The marker is written immediately after `create_directories`, so that a build failing part-way through still lands in case 4 on the next run.
-- `build` gains a `--force` flag, which deletes even in case 5. `--force` does not affect the three checks in case 1 — the source is always protected.
+- `build` gains a `--force` flag, which bypasses marker validation and deletes even in case 5. `--force` does not affect the three checks in case 1 — the source is always protected.
 - The message for case 5 says what to do next:
 
   ```
