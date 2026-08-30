@@ -5,6 +5,23 @@
 
 *English (canonical): [CHANGELOG.md](CHANGELOG.md)*
 
+## [Unreleased]
+
+### 修正
+
+- `--force` を指定せずに非空の出力先を再利用する条件を、`.kappan-out` が通常ファイルで、
+  内容が規定のバイト列と完全に一致する場合に限定しました。偽装・不正・symlink・読取不能な
+  マーカーでは削除しません
+- YAML のルートが mapping でない front matter を、空の mapping として扱わず、ソース位置付きで
+  エラーにするよう修正しました
+- `site.url` の不正な authority・host・port を拒否するようにしました。生成する絶対 URL では、
+  設定した base URL の query・fragment より前に各 permalink を挿入します
+- Windows の予約デバイス名になる slug の先頭にアンダースコアを加え、対応する全
+  プラットフォームで同じ出力を生成できるようにしました
+- `kappan new` が `landing.html` を含む同梱テンプレート6種をすべて出力するようにしました
+- 自動生成するホーム（一覧の1ページ目）が、HTML の `<title>` でサイト名を重複させない
+  ように修正しました
+
 ## [0.1.1] - 2026-08-30
 
 ドキュメントのみの変更です。バイナリの挙動は 0.1.0 と同じです。
@@ -66,5 +83,6 @@
   手順は README の「インストール」節にあります
 - 配布方針の判断は [ADR-0011](docs/ja/adr/0011-release-distribution.md) に記録しています
 
+[Unreleased]: https://github.com/SilentMalachite/Kappan/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/SilentMalachite/Kappan/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/SilentMalachite/Kappan/releases/tag/v0.1.0

@@ -35,4 +35,10 @@ URL 内のどの位置でも拒否する。
 末尾slashを追加・削除したり、path・query・fragmentを変更したり、percent decodeしたりしない。
 検証済みのscalar値をbyte-for-byteそのまま `Config::url` に保持する。
 
+Kappan が `page.og.url`・`sitemap.xml`・`feed.xml` 用の絶対ページ URL を組み立てるときは、
+base URL の path末尾のslashを取り除き、文書の permalink を追加した後、設定された
+query・fragment を変更せずに戻す。たとえば permalink が `/posts/hello/`、base URL が
+`https://example.com/blog?q=日本語#先頭` なら、結果は
+`https://example.com/blog/posts/hello/?q=日本語#先頭` になる。
+
 コンテンツは `<source>/content/` 以下の `.md`。静的ファイルは `<source>/static/` を出力根へコピーする。どちらも `_` で始まるディレクトリは走査しない。

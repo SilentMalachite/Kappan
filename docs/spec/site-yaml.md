@@ -36,4 +36,10 @@ Valid examples include `https://example.com/blog?q=日本語#先頭`,
 trailing slash, change the path, query, or fragment, or percent-decode the value. The validated
 scalar is stored in `Config::url` byte-for-byte.
 
+When Kappan forms an absolute page URL for `page.og.url`, `sitemap.xml`, or `feed.xml`, it removes
+trailing slashes from the base URL path, appends the document permalink, and then restores the
+configured query and fragment unchanged. For example, the permalink `/posts/hello/` and the base
+URL `https://example.com/blog?q=日本語#先頭` produce
+`https://example.com/blog/posts/hello/?q=日本語#先頭`.
+
 Content is the `.md` files under `<source>/content/`. Static files under `<source>/static/` are copied to the output root. In both trees, directories whose name starts with `_` are not traversed.

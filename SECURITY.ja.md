@@ -33,7 +33,10 @@ Kappan はローカルのファイルを読み、ローカルのファイルを�
 ### 対象に含まれるもの
 
 - `--out` の外への書き込み。permalink・slug・`static/` の要素を経由したパストラバーサル
-- `--out` の外を消すこと、および kappan が作ったものでない `--out` を消すこと（[ADR-0007](docs/ja/adr/0007-out-dir-deletion-policy.md)）
+- `--out` の外を消すこと、`--force` の有無にかかわらず `--out` を経由してsource rootまたは
+  その祖先を消すこと、および利用者が `--force` を明示していないのに、有効な
+  `.kappan-out` マーカーがない非空の `--out` を消すこと
+  （[ADR-0007](docs/ja/adr/0007-out-dir-deletion-policy.md)）
 - `kappan serve` が生成サイト外のファイルを配信すること、`--host` の明示なしに loopback を越えて bind すること
 - 壊れてはいるがあり得る入力での、クラッシュ・ハング・メモリの無制限な増加
 - リリースアーカイブの中身が、そのタグのソースをビルドした結果と一致しないこと

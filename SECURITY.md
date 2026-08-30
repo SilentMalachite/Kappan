@@ -33,7 +33,10 @@ Kappan is a command-line tool that reads local files and writes local files. Und
 ### In scope
 
 - Writing outside `--out` — path traversal through a permalink, slug, or `static/` entry
-- Deleting anything outside `--out`, or deleting an `--out` that kappan did not create ([ADR-0007](docs/adr/0007-out-dir-deletion-policy.md))
+- Deleting anything outside `--out`; deleting the source root or one of its ancestors through
+  `--out`, even with `--force`; or deleting a non-empty `--out` without a valid `.kappan-out`
+  marker unless the user explicitly passed `--force`
+  ([ADR-0007](docs/adr/0007-out-dir-deletion-policy.md))
 - `kappan serve` serving a file outside the generated site, or binding beyond loopback without an explicit `--host`
 - A crash, hang, or unbounded memory growth on malformed but plausible input
 - Anything in a release archive that does not match what the tagged source builds

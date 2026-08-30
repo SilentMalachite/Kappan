@@ -40,7 +40,11 @@ To point at a vcpkg elsewhere, set `VCPKG_ROOT` in `CMakeUserPresets.json`, whic
 ## Coding standards
 
 - **C++20, no modules and no coroutines** ([ADR-0001](docs/adr/0001-cpp20-no-modules.md)).
-- **Expected errors return `kappan::Result<T>`** (`tl::expected`). Library code never throws; only the top level of `src/main.cpp` may catch ([ADR-0002](docs/adr/0002-error-handling.md)). Error messages state which file, what is wrong, and why, with a line number.
+- **Expected errors return `kappan::Result<T>`** (`tl::expected`) instead of escaping as
+  exceptions. Catch exceptions only at the top level of `src/main.cpp`, at the nearest boundary
+  around an exception-throwing external library, or at a worker-thread entry that converts failure
+  and returns it after joining. Never swallow an exception and continue. Error messages state which
+  file, what is wrong, and why, with a line number.
 - **Ownership is values and `std::unique_ptr`.** No raw `new` / `delete`. Non-owning references are `const T&`, `std::string_view`, or `std::span`.
 - **Paths are always `std::filesystem::path`.** Never build a path by concatenating strings.
 - **Prefer `std::ranges` and views over hand-written loops**, `concepts` over SFINAE, and `std::format` over `printf` or iostream formatting.
@@ -108,7 +112,9 @@ CI builds on macOS, Linux, and Windows with warnings as errors. All three have t
 
 English is canonical. `docs/spec/` and `docs/adr/` hold the English pages, and `docs/ja/` mirrors them in Japanese.
 
-When you change behaviour, update the matching page under `docs/spec/`. When you make a design decision, add an ADR under `docs/adr/`. Updating the Japanese mirror in the same pull request is welcome; if you cannot, say so in the description and we will follow up.
+When you change behaviour, update the matching page under `docs/spec/`. When you make a design
+decision, add an ADR under `docs/adr/`. Update the corresponding Japanese page under `docs/ja/` in
+the same change; do not update only one language.
 
 ## Code of conduct
 

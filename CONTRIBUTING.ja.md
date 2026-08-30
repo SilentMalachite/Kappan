@@ -40,7 +40,11 @@ ctest --preset dev --output-on-failure
 ## コーディング規約
 
 - **C++20。modules と coroutines は使わない**（[ADR-0001](docs/ja/adr/0001-cpp20-no-modules.md)）。
-- **想定内エラーは `kappan::Result<T>`（`tl::expected`）を返す。** ライブラリコードは例外を投げず、捕捉してよいのは `src/main.cpp` の最上位だけです（[ADR-0002](docs/ja/adr/0002-error-handling.md)）。メッセージは「どのファイルの、何が、どうダメか」を行番号付きで書きます。
+- **想定内エラーは例外として伝播させず、`kappan::Result<T>`（`tl::expected`）を返す。**
+  例外を捕捉してよいのは `src/main.cpp` の最上位、例外を投げる外部ライブラリとの直近境界、
+  または失敗状態へ変換して join 後に返す worker thread の入口だけです。例外を握りつぶして
+  処理を継続しないでください。メッセージは「どのファイルの、何が、どうダメか」を行番号
+  付きで書きます。
 - **所有は値と `std::unique_ptr` のみ。** 生 `new` / `delete` は禁止です。非所有の参照は `const T&` / `std::string_view` / `std::span` を使います。
 - **パスは必ず `std::filesystem::path`。** 文字列連結でパスを組み立てないでください。
 - ループより **`std::ranges` と views**、SFINAE より **concepts**、`printf` や iostream の書式より **`std::format`** を使います。
@@ -108,7 +112,9 @@ CI は macOS / Linux / Windows で警告をエラーとしてビルドします�
 
 英語が正本です。`docs/spec/` と `docs/adr/` に英語版を置き、`docs/ja/` が日本語版を対応させています。
 
-挙動を変えたら `docs/spec/` の該当ページを更新してください。設計判断をしたら `docs/adr/` に ADR を追加してください。同じ PR で日本語版も更新してもらえると助かりますが、難しければその旨を説明に書いていただければこちらで追随します。
+挙動を変えたら `docs/spec/` の該当ページを更新してください。設計判断をしたら `docs/adr/` に
+ADR を追加してください。同じ変更で `docs/ja/` の対応する日本語版も更新し、片方だけを変更
+しないでください。
 
 ## 行動規範
 

@@ -5,6 +5,23 @@ and versioning follows [Semantic Versioning](https://semver.org/).
 
 *日本語版: [CHANGELOG.ja.md](CHANGELOG.ja.md)*
 
+## [Unreleased]
+
+### Fixed
+
+- Without `--force`, non-empty output directories are reused only when `.kappan-out` is a regular
+  file with the exact marker bytes. Spoofed, malformed, symlinked, or unreadable markers no longer
+  allow deletion
+- Front matter whose YAML root is not a mapping is rejected with a source diagnostic instead of
+  being treated as an empty mapping
+- `site.url` now rejects malformed authorities, hosts, and ports. Generated absolute URLs insert
+  each permalink before any query or fragment retained from the configured base URL
+- Slugs that would be reserved Windows device names gain a leading underscore, so generated output
+  is portable across supported platforms
+- `kappan new` writes all six bundled templates, including `landing.html`
+- The automatically generated home page no longer repeats the site title in its rendered HTML
+  `<title>`
+
 ## [0.1.1] - 2026-08-30
 
 Documentation only. The binary behaves exactly as 0.1.0 does.
@@ -68,5 +85,6 @@ First release.
   run; see the Install section of the README
 - The distribution decisions are recorded in [ADR-0011](docs/adr/0011-release-distribution.md)
 
+[Unreleased]: https://github.com/SilentMalachite/Kappan/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/SilentMalachite/Kappan/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/SilentMalachite/Kappan/releases/tag/v0.1.0
