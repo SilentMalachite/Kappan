@@ -11,9 +11,33 @@
 | `draft` | bool | `false`（既定では出力しない。`build --drafts` で含める） |
 | `tags` | string[] | 空 |
 | `description` | string | `""` |
+| `image` | string | `""` |
+| `sections` | map[] | 空 |
 
 `date` は yaml-cpp の日付型に頼らず、スカラー文字列を自分でパースする。不正値の例:
 
 `content/posts/2026-01-01-hello.md:3 front matter の 'date' が日付として解釈できません: '2026-13-01'`
 
-`image` と `sections` は Phase 2 の `FrontMatter` に持たない。
+`image` と `sections` は LP 用（[Landing pages](landing.md)）。`image` は OGP の `og:image` 候補になり、`sections` はテンプレートへ渡す構造化データになる。ブログ記事で使ってもよい。
+
+`sections` は「マップの配列」。各要素の既知キーは `type` / `eyebrow` / `title` / `text` / `image` / `actions` / `items`。`actions` は `{ label, href }` の配列、`items` は `{ title, text, icon }` の配列で、値はすべて文字列。省略した文字列は空、省略した配列は空になる。未知キーは無視する。`type` の値は拒否しない。
+
+```yaml
+sections:
+  - type: hero
+    eyebrow: Kappan
+    title: 日本語LPを静的生成
+    text: Markdown と YAML だけで公開できます 🐙
+    actions:
+      - label: 機能を見る
+        href: "#features"
+  - type: features
+    items:
+      - title: UTF-8
+        text: かな・漢字・絵文字をそのまま扱います。
+        icon: 文
+```
+
+既知キーの型が違う場合は行番号付き `ErrorCode::FrontMatter`。不正値の例:
+
+`content/index.md:6 front matter の 'sections.actions' はマップの配列である必要があります`
