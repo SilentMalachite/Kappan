@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -36,9 +37,7 @@ public:
     if (ec) {
       return;
     }
-    if (const char *current = std::getenv(kTempVariable)) {
-      previous_ = current;
-    }
+    previous_ = read_variable();
     active_ = set_variable(root_.string());
   }
 
@@ -65,6 +64,24 @@ private:
 #else
   static constexpr const char *kTempVariable = "TMPDIR";
 #endif
+
+  // MSVC は std::getenv を C4996 で非推奨にするため、Windows では _dupenv_s を使う。
+  [[nodiscard]] static std::optional<std::string> read_variable() {
+#ifdef _WIN32
+    char *raw = nullptr;
+    std::size_t size = 0;
+    if (_dupenv_s(&raw, &size, kTempVariable) != 0 || raw == nullptr) {
+      return std::nullopt;
+    }
+    const std::unique_ptr<char, decltype(&std::free)> owned(raw, &std::free);
+    return std::string(owned.get());
+#else
+    if (const char *current = std::getenv(kTempVariable)) {
+      return std::string(current);
+    }
+    return std::nullopt;
+#endif
+  }
 
   [[nodiscard]] static bool set_variable(const std::string &value) {
 #ifdef _WIN32
