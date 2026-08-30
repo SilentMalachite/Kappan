@@ -245,3 +245,74 @@ TEST_CASE("parse_document reports non-sequence tags") {
   REQUIRE(result.error().message.find("tags") != std::string::npos);
   std::filesystem::remove_all(root);
 }
+
+TEST_CASE("parse_document reads landing image and sections") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-fm-landing";
+  const auto content = root / "content";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(content);
+  const auto source = content / "index.md";
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\n"
+           "title: 日本語LP 🐙\n"
+           "layout: landing\n"
+           "description: LPの説明\n"
+           "image: /images/og.svg\n"
+           "sections:\n"
+           "  - type: hero\n"
+           "    eyebrow: 活版\n"
+           "    title: 速い静的サイト\n"
+           "    text: 日本語もそのまま扱います。\n"
+           "    image: /images/hero.svg\n"
+           "    actions:\n"
+           "      - label: 詳しく見る\n"
+           "        href: '#features'\n"
+           "  - type: features\n"
+           "    items:\n"
+           "      - title: UTF-8\n"
+           "        text: かな・漢字・絵文字を保持\n"
+           "        icon: sparkle\n"
+           "---\n"
+           "本文\n";
+  }
+
+  const auto result = kappan::content::parse_document(source, test_config(root));
+  REQUIRE(result);
+  REQUIRE(result->front_matter.layout == "landing");
+  REQUIRE(result->front_matter.image == "/images/og.svg");
+  REQUIRE(result->front_matter.sections.size() == 2);
+  REQUIRE(result->front_matter.sections[0].type == "hero");
+  REQUIRE(result->front_matter.sections[0].actions.size() == 1);
+  REQUIRE(result->front_matter.sections[0].actions[0].label == "詳しく見る");
+  REQUIRE(result->front_matter.sections[1].items.size() == 1);
+  REQUIRE(result->front_matter.sections[1].items[0].text == "かな・漢字・絵文字を保持");
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("parse_document reports invalid landing sections with a file line") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-fm-landing-bad";
+  const auto content = root / "content";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(content);
+  const auto source = content / "index.md";
+  {
+    std::ofstream out(source, std::ios::binary);
+    out << "---\n"
+           "title: 壊れたLP\n"
+           "layout: landing\n"
+           "sections:\n"
+           "  - type: hero\n"
+           "    actions: 開く\n"
+           "---\n"
+           "本文\n";
+  }
+
+  const auto result = kappan::content::parse_document(source, test_config(root));
+  REQUIRE_FALSE(result);
+  REQUIRE(result.error().code == kappan::ErrorCode::FrontMatter);
+  REQUIRE(result.error().line.has_value());
+  REQUIRE(*result.error().line == 6);
+  REQUIRE(result.error().message.find("sections.actions") != std::string::npos);
+  std::filesystem::remove_all(root);
+}

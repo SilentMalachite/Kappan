@@ -25,4 +25,9 @@ namespace kappan::content {
                                                          const std::filesystem::path &source,
                                                          const Config &config, int yaml_start_line);
 
+[[nodiscard]] Result<std::vector<LandingSection>> read_sections(const YAML::Node &node,
+                                                                const std::filesystem::path &source,
+                                                                const Config &config,
+                                                                int yaml_start_line);
+
 } // namespace kappan::content

@@ -118,11 +118,23 @@ struct SplitMatter {
   }
   fm.description = std::move(*description);
 
+  auto image = scalar_key(root["image"], "image", source, config, split.yaml_start_line);
+  if (!image) {
+    return tl::unexpected(image.error());
+  }
+  fm.image = std::move(*image);
+
   auto tags = read_tags(root["tags"], source, config, split.yaml_start_line);
   if (!tags) {
     return tl::unexpected(tags.error());
   }
   fm.tags = std::move(*tags);
+
+  auto sections = read_sections(root["sections"], source, config, split.yaml_start_line);
+  if (!sections) {
+    return tl::unexpected(sections.error());
+  }
+  fm.sections = std::move(*sections);
 
   if (root["draft"] && root["draft"].IsDefined()) {
     try {

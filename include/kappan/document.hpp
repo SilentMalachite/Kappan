@@ -8,6 +8,27 @@
 
 namespace kappan {
 
+struct LandingAction {
+  std::string label;
+  std::string href;
+};
+
+struct LandingItem {
+  std::string title;
+  std::string text;
+  std::string icon;
+};
+
+struct LandingSection {
+  std::string type;
+  std::string eyebrow;
+  std::string title;
+  std::string text;
+  std::string image;
+  std::vector<LandingAction> actions;
+  std::vector<LandingItem> items;
+};
+
 struct FrontMatter {
   std::string title;
   std::optional<std::chrono::sys_seconds> date;
@@ -16,6 +37,8 @@ struct FrontMatter {
   bool draft = false;
   std::vector<std::string> tags;
   std::string description;
+  std::string image;
+  std::vector<LandingSection> sections;
 };
 
 struct Document {
