@@ -1,0 +1,89 @@
+name: release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            os: macos-latest
+            preset: dist
+          - target: macos-x86_64
+            os: macos-15-intel
+            preset: dist
+          - target: linux-x86_64
+            os: ubuntu-22.04
+            preset: dist
+          - target: windows-x86_64
+            os: windows-latest
+            preset: dist-windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Install Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y
+
+      # Ninja ジェネレータは PATH の cl.exe を使う。有効化しないと MinGW が拾われる。
+      - name: Enable MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+
+      - name: Bootstrap vcpkg (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "${GITHUB_WORKSPACE}/../vcpkg"
+          git -C "${GITHUB_WORKSPACE}/../vcpkg" fetch --depth 1 origin e99d87dcf02926bfd629560e11e156329d5720c1
+          git -C "${GITHUB_WORKSPACE}/../vcpkg" checkout FETCH_HEAD
+          "${GITHUB_WORKSPACE}/../vcpkg/bootstrap-vcpkg.sh"
+
+      - name: Bootstrap vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$env:GITHUB_WORKSPACE/../vcpkg"
+          git -C "$env:GITHUB_WORKSPACE/../vcpkg" fetch --depth 1 origin e99d87dcf02926bfd629560e11e156329d5720c1
+          git -C "$env:GITHUB_WORKSPACE/../vcpkg" checkout FETCH_HEAD
+          & "$env:GITHUB_WORKSPACE/../vcpkg/bootstrap-vcpkg.bat"
+
+      # x64-windows-static は依存を全て再ビルドするため、キャッシュがないと極端に遅い。
+      - name: Cache vcpkg_installed
+        uses: actions/cache@v4
+        with:
+          path: build/dist/vcpkg_installed
+          key: vcpkg-${{ matrix.target }}-e99d87dcf02926bfd629560e11e156329d5720c1-${{ hashFiles('vcpkg.json') }}
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+
+      - name: Install
+        run: cmake --install build/dist --prefix stage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kappan-${{ matrix.target }}
+          path: stage/
