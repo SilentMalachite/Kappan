@@ -7,7 +7,18 @@
 
 #include <kappan/embedded_theme.hpp>
 
+// inja は throw_parser_error() の直後に break を置くため C4702 が出る。
+// C4702 はバックエンドの警告で、CMake が付ける /external:W0 の対象外になる。
+// upstream のコードなのでこちらでは直せず、この include の間だけ抜く。
+// 自分のコードの C4702 は有効のまま（AGENTS.md §5 の相談を経た措置）。
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4702)
+#endif
 #include <inja/inja.hpp>
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 #include <algorithm>
 #include <format>
