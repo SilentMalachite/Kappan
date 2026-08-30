@@ -277,6 +277,7 @@ type: `feat` / `fix` / `refactor` / `test` / `docs` / `build` / `chore`
 | 6 | `serve --watch` 差分ビルド | 保存 1 秒以内にブラウザ反映 |
 | 7 | LP 対応（`layout: landing`、セクション部品、OGP） | `examples/landing` が生成される |
 | 8 | リリース配布（3 OS の CI 緑化、自己完結バイナリ、GitHub Releases） | `v0.1.0` タグで 4 環境のアーカイブが公開される |
+| 9 | 公開ドキュメントの英語正本化と GitHub の体裁整備 | `v0.1.1` タグで英語 README を同梱したアーカイブが公開される |
 
 ---
 
