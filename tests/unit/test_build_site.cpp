@@ -326,6 +326,48 @@ TEST_CASE("build_site copies static files and writes sitemap and feed") {
   std::filesystem::remove_all(source);
 }
 
+TEST_CASE("build_site inserts permalinks before the base URL query and fragment") {
+  const auto source = std::filesystem::temp_directory_path() / "kappan-url-query-fragment";
+  const auto posts = source / "content" / "posts";
+  std::filesystem::remove_all(source);
+  std::filesystem::create_directories(posts);
+  {
+    std::ofstream yaml(source / "site.yaml", std::ios::binary);
+    yaml << "title: URL結合\n"
+            "url: \"https://sub.example.com/blog?q=日本語#先頭\"\n";
+  }
+  {
+    std::ofstream home(source / "content" / "index.md", std::ios::binary);
+    home << "---\ntitle: ホーム\n---\nホーム本文\n";
+  }
+  {
+    std::ofstream post(posts / kappan::util::from_utf8("2026-01-01-こんにちは.md"),
+                       std::ios::binary);
+    post << "---\ntitle: こんにちは\ndate: 2026-01-01\n---\n記事本文\n";
+  }
+
+  const auto out = source / "out";
+  const auto result = kappan::content::build_site(source, out);
+  REQUIRE(result.ok());
+
+  const std::string root_url = "https://sub.example.com/blog/?q=日本語#先頭";
+  const std::string post_url = "https://sub.example.com/blog/posts/こんにちは/?q=日本語#先頭";
+  const auto sitemap = read_all(out / "sitemap.xml");
+  CHECK(sitemap.find("<loc>" + root_url + "</loc>") != std::string::npos);
+  CHECK(sitemap.find("<loc>" + post_url + "</loc>") != std::string::npos);
+
+  const auto feed = read_all(out / "feed.xml");
+  CHECK(feed.find("<link>" + root_url + "</link>") != std::string::npos);
+  CHECK(feed.find("<link>" + post_url + "</link>") != std::string::npos);
+
+  const auto home = read_all(out / "index.html");
+  CHECK(home.find("<meta property=\"og:url\" content=\"" + root_url + "\">") != std::string::npos);
+  const auto post = read_all(out / "posts" / kappan::util::from_utf8("こんにちは") / "index.html");
+  CHECK(post.find("<meta property=\"og:url\" content=\"" + post_url + "\">") != std::string::npos);
+
+  std::filesystem::remove_all(source);
+}
+
 TEST_CASE("build_site omits sitemap and feed when url is empty") {
   const auto source = std::filesystem::temp_directory_path() / "kappan-no-url";
   std::filesystem::remove_all(source);
