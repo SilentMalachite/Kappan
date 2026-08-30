@@ -87,11 +87,29 @@ target_include_directories(
 
 target_compile_features(kappan_lib PUBLIC cxx_std_20)
 
-target_compile_definitions(kappan_lib PUBLIC CMARK_GFM_STATIC_DEFINE CMARK_GFM_EXTENSIONS_STATIC_DEFINE)
+# cmark-gfm は triplet のリンク形態に応じて静的か動的のどちらか一方しか
+# ビルドされず、出てくるインポートターゲット名も変わる。
+# 静的（*-osx / x64-linux / x64-windows-static）は libcmark-gfm_static、
+# 動的（x64-windows）は libcmark-gfm。存在する側を選ぶ。
+if(TARGET libcmark-gfm_static)
+  set(KAPPAN_CMARK_LIBS libcmark-gfm-extensions_static libcmark-gfm_static)
+  # 静的ライブラリのヘッダに __declspec(dllimport) を付けさせない。
+  set(KAPPAN_CMARK_DEFINES CMARK_GFM_STATIC_DEFINE CMARK_GFM_EXTENSIONS_STATIC_DEFINE)
+elseif(TARGET libcmark-gfm)
+  set(KAPPAN_CMARK_LIBS libcmark-gfm-extensions libcmark-gfm)
+  set(KAPPAN_CMARK_DEFINES "")
+else()
+  message(
+    FATAL_ERROR
+    "cmark-gfm のインポートターゲットが見つかりません。"
+    "libcmark-gfm_static と libcmark-gfm のどちらも定義されていない")
+endif()
+
+target_compile_definitions(kappan_lib PUBLIC ${KAPPAN_CMARK_DEFINES})
 
 target_link_libraries(
   kappan_lib
-  PUBLIC tl::expected spdlog::spdlog libcmark-gfm-extensions_static libcmark-gfm_static
+  PUBLIC tl::expected spdlog::spdlog ${KAPPAN_CMARK_LIBS}
   PRIVATE yaml-cpp::yaml-cpp pantor::inja nlohmann_json::nlohmann_json httplib::httplib)
 
 function(kappan_set_warnings target)
