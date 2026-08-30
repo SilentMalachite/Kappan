@@ -1,5 +1,6 @@
 #include "content/parse.hpp"
 
+#include "content/front_matter_yaml.hpp"
 #include "markdown/cmark.hpp"
 #include "util/datetime.hpp"
 #include "util/path.hpp"
@@ -23,22 +24,6 @@ struct SplitMatter {
   int yaml_start_line = 2;
   bool present = false;
 };
-
-[[nodiscard]] std::string display(const std::filesystem::path &source, const Config &config) {
-  std::error_code ec;
-  const auto rel = std::filesystem::relative(source, config.source_root, ec);
-  if (ec) {
-    return util::to_generic_utf8(source);
-  }
-  return util::to_generic_utf8(rel);
-}
-
-[[nodiscard]] int yaml_file_line(const YAML::Mark &mark, int yaml_start_line) {
-  if (mark.is_null() || mark.line < 0) {
-    return yaml_start_line;
-  }
-  return yaml_start_line + mark.line;
-}
 
 [[nodiscard]] std::vector<std::string> split_lines(std::string_view text) {
   std::vector<std::string> lines;
@@ -88,53 +73,6 @@ struct SplitMatter {
       ErrorCode::FrontMatter,
       std::format("{}:1 front matter の閉じ '---' がありません", display(source, config)), source,
       1));
-}
-
-[[nodiscard]] Result<std::string> scalar_key(const YAML::Node &node, const char *key,
-                                             const std::filesystem::path &source,
-                                             const Config &config, int yaml_start_line) {
-  if (!node || !node.IsDefined()) {
-    return std::string{};
-  }
-  if (!node.IsScalar()) {
-    const int line = yaml_file_line(node.Mark(), yaml_start_line);
-    return tl::unexpected(
-        make_error(ErrorCode::FrontMatter,
-                   std::format("{}:{} front matter の '{}' は文字列である必要があります",
-                               display(source, config), line, key),
-                   source, line));
-  }
-  return node.Scalar();
-}
-
-[[nodiscard]] Result<std::vector<std::string>> read_tags(const YAML::Node &node,
-                                                         const std::filesystem::path &source,
-                                                         const Config &config,
-                                                         int yaml_start_line) {
-  std::vector<std::string> tags;
-  if (!node || !node.IsDefined()) {
-    return tags;
-  }
-  if (!node.IsSequence()) {
-    const int line = yaml_file_line(node.Mark(), yaml_start_line);
-    return tl::unexpected(
-        make_error(ErrorCode::FrontMatter,
-                   std::format("{}:{} front matter の 'tags' は文字列の配列である必要があります",
-                               display(source, config), line),
-                   source, line));
-  }
-  for (const auto &item : node) {
-    if (!item.IsScalar()) {
-      const int line = yaml_file_line(item.Mark(), yaml_start_line);
-      return tl::unexpected(
-          make_error(ErrorCode::FrontMatter,
-                     std::format("{}:{} front matter の 'tags' の要素は文字列である必要があります",
-                                 display(source, config), line),
-                     source, line));
-    }
-    tags.push_back(item.Scalar());
-  }
-  return tags;
 }
 
 [[nodiscard]] Result<FrontMatter> parse_yaml_front_matter(const SplitMatter &split,

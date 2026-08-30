@@ -47,6 +47,7 @@ add_library(
   src/markdown/cmark.cpp
   src/content/convert.cpp
   src/content/scan.cpp
+  src/content/front_matter_yaml.cpp
   src/content/parse.cpp
   src/content/build.cpp
   src/content/scaffold.cpp
