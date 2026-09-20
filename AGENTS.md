@@ -208,10 +208,15 @@ LP を特別扱いしない。**front matter の `layout:` がテンプレート
   判断して再実行を打ち切る。**スキップしたい 1 つのせいで残り全部が消える。** スキップは `if/else` で表し、
   末尾の後始末まで必ず到達させる。`SKIP` は例外を投げるので兄弟 SECTION を消さないが、後始末は飛ぶ。
   直前に片付けてから呼ぶこと
-- **未検証: Windows が循環シンボリックリンクをどう扱うか。** `fs_probe.hpp` の `status_unresolvable()` は
-  「`status()` が種別を判定できない」ことを前提にしている。POSIX は ELOOP で失敗するが、Windows が
-  reparse point の深度超過を同じように `status_known() == false` にするかは未確認。解決できてしまう場合は
-  循環リンク系の 6 テストが windows-latest で `***Skipped` と表示される。**CI で確認したら結果をここに書く**
+- **確認済み: Windows でも循環シンボリックリンク系のテストは走る**（2026-09-20、CI run 35491995313）。
+  windows-latest では `create_symlink` が成功し、循環リンクに対して `status()` が
+  `status_known() == false` を返す。つまり `fs_probe.hpp` の前提は 3 OS すべてで成立し、
+  リンク系テストは `***Skipped` ではなく `Passed` になる。Windows で飛ぶのは
+  `#ifndef _WIN32` のパーミッション系だけ（コンパイル対象外なので 182 件ではなく 179 件になる）
+- **SECTION が 1 つでも `SKIP` すると TEST_CASE 全体が Skipped と表示される。** そのため、
+  プラットフォームで飛ぶ SECTION と飛ばない SECTION を同じ TEST_CASE に混ぜない。
+  混ぜると、実際には走って通った検証まで Skipped に隠れて見えなくなる
+  （上記 CI で `Engine::load` が実際にこれを起こしたので、TEST_CASE を分けた）
 - **フィクスチャには日本語（かな・漢字）、絵文字、半角/全角混在を必ず含める**
 - 検証必須の観点:
   - UTF-8 のまま入出力されること（BOM を付けない、壊さない）
