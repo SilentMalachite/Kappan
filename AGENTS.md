@@ -173,7 +173,7 @@ LP を特別扱いしない。**front matter の `layout:` がテンプレート
 ## 6. エラー処理
 
 - 内部の想定内エラーは **`tl::expected<T, Error>`** を返す。例外を投げない
-- `Error` は `{ ErrorCode code; std::string message; std::optional<std::filesystem::path> where; }`
+- `Error` は `{ ErrorCode code; std::string message; std::optional<std::filesystem::path> where; std::optional<int> line; }`
 - 例外を捕捉してよいのは `main.cpp` の最上位、または例外を投げる外部ライブラリとの直近境界のみ。
   後者では `tl::expected<T, Error>` かプロトコルの失敗応答へ変換する。例外を呼び出し元へ
   伝播できない worker thread の入口では、失敗状態へ変換し、join 後に `tl::expected<T, Error>`
@@ -193,6 +193,25 @@ LP を特別扱いしない。**front matter の `layout:` がテンプレート
   - `dist_selfcontained` — 配布バイナリの依存を許可リストと突き合わせる。`KAPPAN_DIST=ON` のときだけ登録する
 - 新機能には必ずテストを添える。**テストなしの機能追加は完了と見なさない**
 - ゴールデンテスト: `tests/golden/<case>/` に入力サイトと `expected/` を置き、生成結果と比較
+- **プラットフォーム依存の前提は `#ifdef` で丸ごと除外しない。** 実行時にプローブして、成立しない環境だけ
+  `SUCCEED("...ではスキップする")` で飛ばす（`tests/unit/fs_probe.hpp`）。`#ifdef` で落とすと 3 OS のうち
+  1 つでその経路が永久に未検証になる。POSIX のパーミッションビットのように Windows で原理的に成立しない
+  ものに限り `#ifndef _WIN32` を使い、理由をコメントに書く
+- **`SECTION` の中で `return` しない。** Catch2 の `return` は SECTION ではなく TEST_CASE の関数ごと抜ける。
+  先頭 SECTION で戻ると兄弟 SECTION がまだ登録されておらず、Catch2 は「既知の SECTION は完了した」と
+  判断して再実行を打ち切る。**スキップしたい 1 つのせいで残り全部が消える。** スキップは `if/else` で表し、
+  末尾の後始末まで必ず到達させる。SECTION を持たない TEST_CASE の直下なら `SUCCEED` + `return` でよい
+- **`SUCCEED` によるスキップは、通常の `ctest --output-on-failure` の緑では検出できない。** 成功扱いだからで、
+  「走った」のか「前提不成立で飛ばした」のかを区別するには `--success` を付けて実行ログを見る
+  ```
+  ./build/dev/tests/kappan_tests --success 2>&1 | grep "スキップする"
+  ```
+  プローブを導入・変更したら、意図した環境で**本当に本体が走っているか**をこの方法で確かめる。
+  ローカルで検証できないプラットフォームは CI のログで確認する
+- **未検証: Windows が循環シンボリックリンクをどう扱うか。** `fs_probe.hpp` の `status_unresolvable()` は
+  「`status()` が種別を判定できない」ことを前提にしている。POSIX は ELOOP で失敗するが、Windows が
+  reparse point の深度超過を同じように `status_known() == false` にするかは未確認。もし解決できてしまう
+  なら、循環リンク系のテストは windows-latest で常にスキップされる。**確認したら、その結果をここに書く**
 - **フィクスチャには日本語（かな・漢字）、絵文字、半角/全角混在を必ず含める**
 - 検証必須の観点:
   - UTF-8 のまま入出力されること（BOM を付けない、壊さない）
