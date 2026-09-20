@@ -10,6 +10,7 @@ add_executable(
   unit/test_datetime.cpp
   unit/test_config.cpp
   unit/test_front_matter.cpp
+  unit/test_scan.cpp
   unit/test_build_site.cpp
   unit/test_render.cpp
   unit/test_scaffold.cpp

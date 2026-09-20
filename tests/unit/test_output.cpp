@@ -1,3 +1,4 @@
+#include "fs_probe.hpp"
 #include "output/assets.hpp"
 #include "output/write.hpp"
 #include "output/xml.hpp"
@@ -298,6 +299,8 @@ TEST_CASE("claim_destination rejects a destination that already exists") {
   std::filesystem::remove_all(dir);
 }
 
+// POSIX のパーミッションビットは NTFS の ACL に写らない。Windows では
+// permissions(perms::none) を掛けても走査は成功し、前提が原理的に成立しない。
 #ifndef _WIN32
 TEST_CASE("copy_static reports a scan error instead of stopping silently") {
   const auto root = std::filesystem::temp_directory_path() / "kappan-static-scan-error";
@@ -340,7 +343,6 @@ TEST_CASE("copy_static reports a scan error instead of stopping silently") {
 }
 #endif
 
-#ifndef _WIN32
 TEST_CASE("copy_static reports an unresolvable symlink without throwing") {
   const auto root = std::filesystem::temp_directory_path() / "kappan-static-symlink";
   std::filesystem::remove_all(root);
@@ -353,9 +355,18 @@ TEST_CASE("copy_static reports an unresolvable symlink without throwing") {
     top << "t\n";
   }
   // 自分を指すループ。stat が ELOOP で失敗し、種別を判定できない。
-  std::filesystem::create_symlink("loop", static_dir / "loop");
   // 行き先なし。stat は not_found を返すだけなのでエラーではない（従来どおり黙って飛ばす）。
-  std::filesystem::create_symlink("nowhere", static_dir / "dangling");
+  if (!kappan::testing::try_create_symlink("loop", static_dir / "loop") ||
+      !kappan::testing::try_create_symlink("nowhere", static_dir / "dangling")) {
+    std::filesystem::remove_all(root);
+    SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+    return;
+  }
+  if (!kappan::testing::status_unresolvable(static_dir / "loop")) {
+    std::filesystem::remove_all(root);
+    SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
+    return;
+  }
 
   kappan::output::ClaimedOutputs claimed;
   std::vector<kappan::Error> errors;
@@ -369,7 +380,6 @@ TEST_CASE("copy_static reports an unresolvable symlink without throwing") {
 
   std::filesystem::remove_all(root);
 }
-#endif
 
 TEST_CASE("xml_escape drops characters that XML 1.0 forbids") {
   using kappan::output::xml_escape;
@@ -581,6 +591,8 @@ TEST_CASE("prepare_out_dir rejects spoofed output markers without deleting data"
     REQUIRE(read_bytes(marker) == "kappan output directory\n");
   }
 
+// POSIX のパーミッションビットは NTFS の ACL に写らない。Windows では
+// permissions(perms::none) を掛けても読めてしまい、前提が原理的に成立しない。
 #ifndef _WIN32
   SECTION("marker cannot be read") {
     write_bytes(marker, "kappan output directory\n");

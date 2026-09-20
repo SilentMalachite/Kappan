@@ -1,6 +1,7 @@
 #include <kappan/error.hpp>
 
 #include "content/build.hpp"
+#include "fs_probe.hpp"
 #include "util/path.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -651,4 +652,44 @@ TEST_CASE("build_site writes the landing example with OGP") {
   REQUIRE(std::filesystem::exists(out / "images" / "og.svg"));
   REQUIRE(std::filesystem::exists(out / "css" / "site.css"));
   std::filesystem::remove_all(out);
+}
+
+TEST_CASE("build_site keeps building when a content symlink cannot be resolved") {
+  const auto source = std::filesystem::temp_directory_path() / "kappan-content-symlink";
+  std::filesystem::remove_all(source);
+  const auto content = source / "content";
+  std::filesystem::create_directories(content);
+  {
+    std::ofstream out(source / "site.yaml", std::ios::binary);
+    out << "title: リンクのある site\n";
+  }
+  {
+    std::ofstream out(content / kappan::util::from_utf8("読める.md"), std::ios::binary);
+    out << "---\ntitle: 読める\n---\n本文\n";
+  }
+  // 自分を指すループ。以前はここで filesystem_error が Result を貫通していた。
+  if (!kappan::testing::try_create_symlink("loop.md", content / "loop.md")) {
+    std::filesystem::remove_all(source);
+    SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+    return;
+  }
+  if (!kappan::testing::status_unresolvable(content / "loop.md")) {
+    std::filesystem::remove_all(source);
+    SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
+    return;
+  }
+
+  const auto out = source / "out";
+  kappan::content::BuildResult result;
+  REQUIRE_NOTHROW(result = kappan::content::build_site(source, out));
+
+  // 1 件の失敗でビルド全体を止めない。終了コードは非 0 になる（AGENTS.md §6）
+  REQUIRE_FALSE(result.ok());
+  REQUIRE(result.errors.size() == 1);
+  REQUIRE(result.errors.front().code == kappan::ErrorCode::Io);
+  REQUIRE(result.errors.front().message.find("種別を判定できません") != std::string::npos);
+  REQUIRE(std::filesystem::exists(out / kappan::util::from_utf8("読める") / "index.html"));
+  REQUIRE(std::filesystem::exists(out / "index.html"));
+
+  std::filesystem::remove_all(source);
 }

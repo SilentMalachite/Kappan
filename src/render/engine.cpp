@@ -21,10 +21,12 @@
 #endif
 
 #include <algorithm>
+#include <filesystem>
 #include <format>
 #include <map>
 #include <nlohmann/json.hpp>
 #include <ranges>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -41,6 +43,13 @@ constexpr NamedTheme kEmbedded[] = {
     {"page.html", embedded::page_html}, {"index.html", embedded::index_html},
     {"tag.html", embedded::tag_html},   {"landing.html", embedded::landing_html},
 };
+
+[[nodiscard]] Error scan_error(const std::filesystem::path &dir, const std::error_code &ec) {
+  return make_error(
+      ErrorCode::Io,
+      std::format("{}: テンプレートを走査できません: {}", util::to_generic_utf8(dir), ec.message()),
+      dir);
+}
 
 [[nodiscard]] int inja_line(const inja::SourceLocation &location) {
   if (location.line == 0) {
@@ -121,26 +130,46 @@ Result<Engine> Engine::load(const Config &config) {
 
   const auto override_dir = config.source_root / "templates";
   std::error_code ec;
-  if (std::filesystem::is_directory(override_dir, ec)) {
-    for (const auto &entry : std::filesystem::directory_iterator(override_dir, ec)) {
+  // 種別の問い合わせは 1 回だけ。is_directory(dir, ec) の ec を捨てると、
+  // templates/ 自体の解決失敗（ELOOP 等）を「上書きは無い」と読み違える。
+  const auto dir_status = std::filesystem::status(override_dir, ec);
+  if (!std::filesystem::status_known(dir_status)) {
+    return tl::unexpected(scan_error(override_dir, ec));
+  }
+  if (std::filesystem::is_directory(dir_status)) {
+    auto it = std::filesystem::directory_iterator(override_dir, ec);
+    if (ec) {
+      return tl::unexpected(scan_error(override_dir, ec));
+    }
+    // range-for の operator++ は投げるオーバーロードで、構築に失敗した場合は end と
+    // 等しくなって本体が 1 度も回らない。increment(ec) を使い、その直後に ec を見る。
+    const std::filesystem::directory_iterator end;
+    while (it != end) {
+      // 投げるオーバーロード（is_regular_file() など）だと、シンボリックリンクの
+      // 解決失敗で filesystem_error が Result を貫通する。
+      std::error_code type_ec;
+      const auto entry_status = it->status(type_ec);
+      if (!std::filesystem::status_known(entry_status)) {
+        const auto detail = type_ec ? type_ec.message() : std::string{"種別が不明です"};
+        return tl::unexpected(make_error(
+            ErrorCode::Io,
+            std::format("{}: 種別を判定できません: {}", util::to_generic_utf8(it->path()), detail),
+            it->path()));
+      }
+      if (std::filesystem::is_regular_file(entry_status) && it->path().extension() == ".html") {
+        auto text = util::read_utf8_file(it->path());
+        if (!text) {
+          return tl::unexpected(text.error());
+        }
+        auto installed = install_template(impl->env, impl->layouts,
+                                          util::to_utf8(it->path().filename()), *text, it->path());
+        if (!installed) {
+          return tl::unexpected(installed.error());
+        }
+      }
+      it.increment(ec);
       if (ec) {
-        return tl::unexpected(
-            make_error(ErrorCode::Io,
-                       std::format("{}: テンプレートを走査できません: {}",
-                                   util::to_generic_utf8(override_dir), ec.message()),
-                       override_dir));
-      }
-      if (!entry.is_regular_file() || entry.path().extension() != ".html") {
-        continue;
-      }
-      auto text = util::read_utf8_file(entry.path());
-      if (!text) {
-        return tl::unexpected(text.error());
-      }
-      auto installed = install_template(
-          impl->env, impl->layouts, util::to_utf8(entry.path().filename()), *text, entry.path());
-      if (!installed) {
-        return tl::unexpected(installed.error());
+        return tl::unexpected(scan_error(override_dir, ec));
       }
     }
   }
