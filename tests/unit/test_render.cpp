@@ -506,30 +506,6 @@ TEST_CASE("Engine::load reports an unresolvable template symlink without throwin
     }
   }
 
-  SECTION("開けない templates/ は走査の失敗として報告する") {
-    // 構築に失敗すると end と等しくなり、range-for ではループ本体に入らない。
-    // かつて ec の検査がループ本体にあり、上書きが丸ごと無視されて成功扱いだった。
-    std::filesystem::permissions(templates, std::filesystem::perms::none);
-    std::error_code probe_ec;
-    const std::filesystem::directory_iterator probe(templates, probe_ec);
-    if (!probe_ec) {
-      // Windows の permissions(perms::none) は読み取り専用属性を立てるだけで列挙を止めない。
-      std::filesystem::permissions(templates, std::filesystem::perms::owner_all);
-      SKIP("権限が効かない環境ではスキップする");
-    } else {
-      // REQUIRE が落ちると以降が実行されないので、判定より先に権限を戻す。
-      // 戻さないまま抜けると末尾の remove_all が失敗する。
-      kappan::Result<kappan::render::Engine> engine =
-          tl::unexpected(kappan::make_error(kappan::ErrorCode::Io, "未実行"));
-      REQUIRE_NOTHROW(engine = kappan::render::Engine::load(config));
-      std::filesystem::permissions(templates, std::filesystem::perms::owner_all);
-      REQUIRE_FALSE(engine);
-      REQUIRE(engine.error().code == kappan::ErrorCode::Io);
-      INFO("message: " << engine.error().message);
-      REQUIRE(engine.error().message.find("テンプレートを走査できません") != std::string::npos);
-    }
-  }
-
   SECTION("templates/ 自体がループなら走査の失敗として報告する") {
     std::filesystem::remove(templates);
     if (!kappan::testing::try_create_symlink("templates", root / "templates")) {
@@ -543,3 +519,43 @@ TEST_CASE("Engine::load reports an unresolvable template symlink without throwin
 
   std::filesystem::remove_all(root);
 }
+
+// POSIX のパーミッションビットは NTFS の ACL に写らない。Windows では
+// permissions(perms::none) を掛けても列挙は成功し、前提が原理的に成立しない。
+// symlink 側の TEST_CASE と分けてあるのは、SECTION が 1 つでも SKIP すると
+// TEST_CASE 全体が Skipped と表示され、Windows で走った検証まで隠れるため。
+#ifndef _WIN32
+TEST_CASE("Engine::load reports a templates directory it cannot open") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-templates-locked";
+  std::filesystem::remove_all(root);
+  const auto templates = root / "templates";
+  std::filesystem::create_directories(templates);
+
+  kappan::Config config = listing_config();
+  config.source_root = root;
+  config.content_dir = root / "content";
+
+  // 構築に失敗すると end と等しくなり、range-for ではループ本体に入らない。
+  // かつて ec の検査がループ本体にあり、上書きが丸ごと無視されて成功扱いだった。
+  std::filesystem::permissions(templates, std::filesystem::perms::none);
+  std::error_code probe_ec;
+  const std::filesystem::directory_iterator probe(templates, probe_ec);
+  if (!probe_ec) {
+    std::filesystem::permissions(templates, std::filesystem::perms::owner_all);
+    std::filesystem::remove_all(root);
+    SKIP("権限が効かない環境ではスキップする");
+  }
+
+  // REQUIRE が落ちると以降が実行されないので、判定より先に権限を戻す。
+  kappan::Result<kappan::render::Engine> engine =
+      tl::unexpected(kappan::make_error(kappan::ErrorCode::Io, "未実行"));
+  REQUIRE_NOTHROW(engine = kappan::render::Engine::load(config));
+  std::filesystem::permissions(templates, std::filesystem::perms::owner_all);
+  REQUIRE_FALSE(engine);
+  REQUIRE(engine.error().code == kappan::ErrorCode::Io);
+  INFO("message: " << engine.error().message);
+  REQUIRE(engine.error().message.find("テンプレートを走査できません") != std::string::npos);
+
+  std::filesystem::remove_all(root);
+}
+#endif
