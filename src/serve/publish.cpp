@@ -111,44 +111,6 @@ void reclaim_path(const std::filesystem::path &dir) noexcept {
   std::filesystem::remove_all(dir, ec);
 }
 
-[[nodiscard]] bool contains_dotdot(const std::filesystem::path &rel) {
-  for (const auto &part : rel) {
-    if (part == "..") {
-      return true;
-    }
-  }
-  return false;
-}
-
-[[nodiscard]] Result<std::filesystem::path> weakly_absolute(const std::filesystem::path &path) {
-  std::error_code ec;
-  const auto absolute = std::filesystem::absolute(path, ec);
-  if (ec) {
-    return tl::unexpected(io_error(path, std::format("{}: パスを解決できません: {}",
-                                                     util::to_generic_utf8(path), ec.message())));
-  }
-  const auto canonical = std::filesystem::weakly_canonical(absolute, ec);
-  if (ec) {
-    return tl::unexpected(io_error(path, std::format("{}: パスを解決できません: {}",
-                                                     util::to_generic_utf8(path), ec.message())));
-  }
-  return canonical;
-}
-
-[[nodiscard]] bool escapes_root(const std::filesystem::path &root,
-                                const std::filesystem::path &relative) {
-  if (relative.empty() || relative.has_root_path() || contains_dotdot(relative)) {
-    return true;
-  }
-  const auto root_abs = weakly_absolute(root);
-  const auto dest_abs = weakly_absolute(root / relative);
-  if (!root_abs || !dest_abs) {
-    return true;
-  }
-  const auto rel = dest_abs->lexically_relative(*root_abs);
-  return rel.empty() || rel.has_root_path() || contains_dotdot(rel);
-}
-
 [[nodiscard]] Result<ByteBuffer> read_all_bytes(const std::filesystem::path &path) {
   std::ifstream in(path, std::ios::binary);
   if (!in) {
@@ -194,7 +156,7 @@ static_to_output_relative(const std::filesystem::path &relative) {
     return std::nullopt;
   }
   auto out = util::from_utf8(generic.substr(kPrefix.size()));
-  if (out.empty() || out.has_root_path() || contains_dotdot(out) || out == ".") {
+  if (out.empty() || out.has_root_path() || util::contains_dotdot(out) || out == ".") {
     return std::nullopt;
   }
   return out;
@@ -254,13 +216,13 @@ struct AppliedStatic {
 void prune_empty_ancestors(const std::filesystem::path &root, std::filesystem::path dir) noexcept {
   std::error_code ec;
   while (true) {
-    const auto root_abs = weakly_absolute(root);
-    const auto dir_abs = weakly_absolute(dir);
+    const auto root_abs = util::weakly_canonical_absolute(root);
+    const auto dir_abs = util::weakly_canonical_absolute(dir);
     if (!root_abs || !dir_abs || *dir_abs == *root_abs) {
       return;
     }
     const auto rel = dir_abs->lexically_relative(*root_abs);
-    if (rel.empty() || rel == "." || rel.has_root_path() || contains_dotdot(rel)) {
+    if (rel.empty() || rel == "." || rel.has_root_path() || util::contains_dotdot(rel)) {
       return;
     }
     if (!std::filesystem::is_directory(dir, ec) || ec) {
@@ -381,7 +343,8 @@ void plan_change(const SourceChange &change, const std::filesystem::path &static
   }
 
   const auto output = static_to_output_relative(change.relative);
-  if (!output || escapes_root(generation.root, *output) || escapes_root(static_dir, *output)) {
+  if (!output || util::escapes_root(generation.root, *output) ||
+      util::escapes_root(static_dir, *output)) {
     errors.push_back(
         path_error(change.relative, std::format("{}: static の出力先が生成世代の外です",
                                                 util::to_generic_utf8(change.relative))));
@@ -481,7 +444,7 @@ std::uint64_t GenerationReadLease::generation() const { return impl_->generation
 
 Result<ByteBuffer> GenerationReadLease::read_bytes(const std::filesystem::path &relative) const {
   const auto &root = impl_->generation->root;
-  if (escapes_root(root, relative)) {
+  if (util::escapes_root(root, relative)) {
     return tl::unexpected(
         make_error(ErrorCode::Path,
                    std::format("{}: 生成世代の外を参照しています", util::to_generic_utf8(relative)),

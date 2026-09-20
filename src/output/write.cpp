@@ -12,32 +12,16 @@ namespace {
 
 constexpr std::string_view kOutMarkerContent = "kappan output directory\n";
 
-[[nodiscard]] bool contains_dotdot(const std::filesystem::path &rel) {
-  for (const auto &part : rel) {
-    if (part == "..") {
-      return true;
-    }
-  }
-  return false;
-}
-
 [[nodiscard]] Result<std::filesystem::path> canonical_abs(const std::filesystem::path &path) {
-  std::error_code ec;
-  const auto absolute = std::filesystem::absolute(path, ec);
-  if (ec) {
-    return tl::unexpected(make_error(
-        ErrorCode::Io,
-        std::format("{}: パスを解決できません: {}", util::to_generic_utf8(path), ec.message()),
-        path));
+  auto canonical = util::weakly_canonical_absolute(path);
+  if (!canonical) {
+    return tl::unexpected(
+        make_error(ErrorCode::Io,
+                   std::format("{}: パスを解決できません: {}", util::to_generic_utf8(path),
+                               canonical.error().message()),
+                   path));
   }
-  const auto canonical = std::filesystem::weakly_canonical(absolute, ec);
-  if (ec) {
-    return tl::unexpected(make_error(
-        ErrorCode::Io,
-        std::format("{}: パスを解決できません: {}", util::to_generic_utf8(path), ec.message()),
-        path));
-  }
-  return canonical;
+  return *canonical;
 }
 
 [[nodiscard]] Error same_out_error(const std::filesystem::path &out_dir) {
@@ -188,14 +172,14 @@ bool source_inside_out(const std::filesystem::path &relative_source) {
   if (relative_source.empty()) {
     return false;
   }
-  return !relative_source.has_root_path() && !contains_dotdot(relative_source);
+  return !relative_source.has_root_path() && !util::contains_dotdot(relative_source);
 }
 
 bool claim_output(ClaimedOutputs &claimed, std::string_view relative,
                   const std::filesystem::path &source, std::vector<Error> &errors) {
   // 書き込み・コピーはすべてここを通る。--out の外を指す出力先は claim させない。
   const auto path = util::from_utf8(relative);
-  if (path.has_root_path() || contains_dotdot(path)) {
+  if (path.has_root_path() || util::contains_dotdot(path)) {
     errors.push_back(make_error(ErrorCode::Path,
                                 std::format("{}: 出力パス '{}' が --out の外を指しています",
                                             util::to_generic_utf8(source), relative),
