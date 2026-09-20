@@ -78,13 +78,11 @@ TEST_CASE("scan_markdown reports an unresolvable symlink without throwing") {
   if (!kappan::testing::try_create_symlink("loop.md", content / "loop.md") ||
       !kappan::testing::try_create_symlink("nowhere.md", content / "dangling.md")) {
     std::filesystem::remove_all(root);
-    SUCCEED("シンボリックリンクを作れない環境ではスキップする");
-    return;
+    SKIP("シンボリックリンクを作れない環境ではスキップする");
   }
   if (!kappan::testing::status_unresolvable(content / "loop.md")) {
     std::filesystem::remove_all(root);
-    SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
-    return;
+    SKIP("循環リンクを解決できてしまう環境ではスキップする");
   }
 
   kappan::Result<kappan::content::ScanResult> scanned =
@@ -110,13 +108,11 @@ TEST_CASE("scan_markdown reports a content directory that cannot be resolved") {
   // content/ 自体がループ。「ありません」ではなく走査の失敗として報告する。
   if (!kappan::testing::try_create_symlink("content", root / "content")) {
     std::filesystem::remove_all(root);
-    SUCCEED("シンボリックリンクを作れない環境ではスキップする");
-    return;
+    SKIP("シンボリックリンクを作れない環境ではスキップする");
   }
   if (!kappan::testing::status_unresolvable(root / "content")) {
     std::filesystem::remove_all(root);
-    SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
-    return;
+    SKIP("循環リンクを解決できてしまう環境ではスキップする");
   }
 
   kappan::Result<kappan::content::ScanResult> scanned =
@@ -146,8 +142,7 @@ TEST_CASE("scan_markdown reports a directory it cannot open") {
   if (!probe_ec) {
     std::filesystem::permissions(content, std::filesystem::perms::owner_all);
     std::filesystem::remove_all(root);
-    SUCCEED("権限が効かない環境ではスキップする");
-    return;
+    SKIP("権限が効かない環境ではスキップする");
   }
 
   // イテレータの構築に失敗すると end と等しくなる。ループ本体で ec を見ていると
@@ -178,8 +173,7 @@ TEST_CASE("scan_markdown reports a scan error instead of stopping silently") {
   if (!probe_ec) {
     std::filesystem::permissions(content / "locked", std::filesystem::perms::owner_all);
     std::filesystem::remove_all(root);
-    SUCCEED("権限が効かない環境ではスキップする");
-    return;
+    SKIP("権限が効かない環境ではスキップする");
   }
 
   // skip_permission_denied を外すと increment が失敗する。for の条件で先に抜けると

@@ -325,8 +325,7 @@ TEST_CASE("copy_static reports a scan error instead of stopping silently") {
   if (!probe_ec) {
     std::filesystem::permissions(static_dir / "locked", std::filesystem::perms::owner_all);
     std::filesystem::remove_all(root);
-    SUCCEED("権限が効かない環境ではスキップする");
-    return;
+    SKIP("権限が効かない環境ではスキップする");
   }
 
   kappan::output::ClaimedOutputs claimed;
@@ -359,13 +358,11 @@ TEST_CASE("copy_static reports an unresolvable symlink without throwing") {
   if (!kappan::testing::try_create_symlink("loop", static_dir / "loop") ||
       !kappan::testing::try_create_symlink("nowhere", static_dir / "dangling")) {
     std::filesystem::remove_all(root);
-    SUCCEED("シンボリックリンクを作れない環境ではスキップする");
-    return;
+    SKIP("シンボリックリンクを作れない環境ではスキップする");
   }
   if (!kappan::testing::status_unresolvable(static_dir / "loop")) {
     std::filesystem::remove_all(root);
-    SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
-    return;
+    SKIP("循環リンクを解決できてしまう環境ではスキップする");
   }
 
   kappan::output::ClaimedOutputs claimed;

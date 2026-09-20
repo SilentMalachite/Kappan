@@ -194,24 +194,24 @@ LP を特別扱いしない。**front matter の `layout:` がテンプレート
 - 新機能には必ずテストを添える。**テストなしの機能追加は完了と見なさない**
 - ゴールデンテスト: `tests/golden/<case>/` に入力サイトと `expected/` を置き、生成結果と比較
 - **プラットフォーム依存の前提は `#ifdef` で丸ごと除外しない。** 実行時にプローブして、成立しない環境だけ
-  `SUCCEED("...ではスキップする")` で飛ばす（`tests/unit/fs_probe.hpp`）。`#ifdef` で落とすと 3 OS のうち
+  `SKIP("...ではスキップする")` で飛ばす（`tests/unit/fs_probe.hpp`）。`#ifdef` で落とすと 3 OS のうち
   1 つでその経路が永久に未検証になる。POSIX のパーミッションビットのように Windows で原理的に成立しない
   ものに限り `#ifndef _WIN32` を使い、理由をコメントに書く
+- **スキップは `SUCCEED` ではなく `SKIP` を使う。** `SUCCEED` は成功扱いなので、通常の `ctest` の緑からは
+  「走った」のか「前提不成立で飛ばした」のかを区別できない。`SKIP` なら `catch_discover_tests` が付ける
+  `SKIP_RETURN_CODE 4` により、`ctest` の出力に `***Skipped` と「The following tests did not run」が出る。
+  ローカルで検証できないプラットフォームの実態は、この表示を CI のログで読む
+  - 一部の SECTION だけスキップしても TEST_CASE 全体が Skipped と表示される（実測）
+  - 別の SECTION が落ちていれば Skipped ではなく Failed になる。スキップが失敗を隠すことはない（実測）
 - **`SECTION` の中で `return` しない。** Catch2 の `return` は SECTION ではなく TEST_CASE の関数ごと抜ける。
   先頭 SECTION で戻ると兄弟 SECTION がまだ登録されておらず、Catch2 は「既知の SECTION は完了した」と
   判断して再実行を打ち切る。**スキップしたい 1 つのせいで残り全部が消える。** スキップは `if/else` で表し、
-  末尾の後始末まで必ず到達させる。SECTION を持たない TEST_CASE の直下なら `SUCCEED` + `return` でよい
-- **`SUCCEED` によるスキップは、通常の `ctest --output-on-failure` の緑では検出できない。** 成功扱いだからで、
-  「走った」のか「前提不成立で飛ばした」のかを区別するには `--success` を付けて実行ログを見る
-  ```
-  ./build/dev/tests/kappan_tests --success 2>&1 | grep "スキップする"
-  ```
-  プローブを導入・変更したら、意図した環境で**本当に本体が走っているか**をこの方法で確かめる。
-  ローカルで検証できないプラットフォームは CI のログで確認する
+  末尾の後始末まで必ず到達させる。`SKIP` は例外を投げるので兄弟 SECTION を消さないが、後始末は飛ぶ。
+  直前に片付けてから呼ぶこと
 - **未検証: Windows が循環シンボリックリンクをどう扱うか。** `fs_probe.hpp` の `status_unresolvable()` は
   「`status()` が種別を判定できない」ことを前提にしている。POSIX は ELOOP で失敗するが、Windows が
-  reparse point の深度超過を同じように `status_known() == false` にするかは未確認。もし解決できてしまう
-  なら、循環リンク系のテストは windows-latest で常にスキップされる。**確認したら、その結果をここに書く**
+  reparse point の深度超過を同じように `status_known() == false` にするかは未確認。解決できてしまう場合は
+  循環リンク系の 6 テストが windows-latest で `***Skipped` と表示される。**CI で確認したら結果をここに書く**
 - **フィクスチャには日本語（かな・漢字）、絵文字、半角/全角混在を必ず含める**
 - 検証必須の観点:
   - UTF-8 のまま入出力されること（BOM を付けない、壊さない）
