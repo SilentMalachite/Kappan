@@ -488,7 +488,7 @@ TEST_CASE("Engine::load reports an unresolvable template symlink without throwin
 
   SECTION("行き先の無いリンクは黙って飛ばす") {
     if (!kappan::testing::try_create_symlink("nowhere.html", templates / "dangling.html")) {
-      SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+      SKIP("シンボリックリンクを作れない環境ではスキップする");
     } else {
       auto engine = kappan::render::Engine::load(config);
       REQUIRE(engine);
@@ -498,9 +498,9 @@ TEST_CASE("Engine::load reports an unresolvable template symlink without throwin
   SECTION("自分を指すループは Io として報告する") {
     // stat が ELOOP で失敗する。投げるオーバーロードだと Result 境界を貫通していた。
     if (!kappan::testing::try_create_symlink("loop.html", templates / "loop.html")) {
-      SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+      SKIP("シンボリックリンクを作れない環境ではスキップする");
     } else if (!kappan::testing::status_unresolvable(templates / "loop.html")) {
-      SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
+      SKIP("循環リンクを解決できてしまう環境ではスキップする");
     } else {
       require_scan_failure("種別を判定できません");
     }
@@ -515,7 +515,7 @@ TEST_CASE("Engine::load reports an unresolvable template symlink without throwin
     if (!probe_ec) {
       // Windows の permissions(perms::none) は読み取り専用属性を立てるだけで列挙を止めない。
       std::filesystem::permissions(templates, std::filesystem::perms::owner_all);
-      SUCCEED("権限が効かない環境ではスキップする");
+      SKIP("権限が効かない環境ではスキップする");
     } else {
       // REQUIRE が落ちると以降が実行されないので、判定より先に権限を戻す。
       // 戻さないまま抜けると末尾の remove_all が失敗する。
@@ -533,9 +533,9 @@ TEST_CASE("Engine::load reports an unresolvable template symlink without throwin
   SECTION("templates/ 自体がループなら走査の失敗として報告する") {
     std::filesystem::remove(templates);
     if (!kappan::testing::try_create_symlink("templates", root / "templates")) {
-      SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+      SKIP("シンボリックリンクを作れない環境ではスキップする");
     } else if (!kappan::testing::status_unresolvable(root / "templates")) {
-      SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
+      SKIP("循環リンクを解決できてしまう環境ではスキップする");
     } else {
       require_scan_failure("テンプレートを走査できません");
     }

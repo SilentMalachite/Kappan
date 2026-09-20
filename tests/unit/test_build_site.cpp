@@ -670,13 +670,11 @@ TEST_CASE("build_site keeps building when a content symlink cannot be resolved")
   // 自分を指すループ。以前はここで filesystem_error が Result を貫通していた。
   if (!kappan::testing::try_create_symlink("loop.md", content / "loop.md")) {
     std::filesystem::remove_all(source);
-    SUCCEED("シンボリックリンクを作れない環境ではスキップする");
-    return;
+    SKIP("シンボリックリンクを作れない環境ではスキップする");
   }
   if (!kappan::testing::status_unresolvable(content / "loop.md")) {
     std::filesystem::remove_all(source);
-    SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
-    return;
+    SKIP("循環リンクを解決できてしまう環境ではスキップする");
   }
 
   const auto out = source / "out";

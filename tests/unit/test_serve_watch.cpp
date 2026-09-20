@@ -689,9 +689,9 @@ TEST_CASE("snapshot_source reports unresolvable symlinks without throwing", "[se
                                       const std::filesystem::path &target,
                                       std::string_view fragment) {
     if (!kappan::testing::try_create_symlink(target, link)) {
-      SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+      SKIP("シンボリックリンクを作れない環境ではスキップする");
     } else if (!kappan::testing::status_unresolvable(link)) {
-      SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
+      SKIP("循環リンクを解決できてしまう環境ではスキップする");
     } else {
       require_io_error(fragment);
     }
@@ -719,7 +719,7 @@ TEST_CASE("snapshot_source reports unresolvable symlinks without throwing", "[se
   SECTION("行き先の無いリンクは黙って飛ばす") {
     // stat は not_found を返すだけで、判明した種別なのでエラーではない。
     if (!kappan::testing::try_create_symlink("nowhere.md", root / "content" / "dangling.md")) {
-      SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+      SKIP("シンボリックリンクを作れない環境ではスキップする");
     } else {
       const auto snap = kappan::serve::snapshot_source(root);
       REQUIRE(snap);
