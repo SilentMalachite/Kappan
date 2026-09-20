@@ -54,4 +54,35 @@ std::filesystem::path output_from_permalink(std::string_view permalink) {
   return out / "index.html";
 }
 
+bool contains_dotdot(const std::filesystem::path &rel) {
+  return std::ranges::any_of(rel, [](const std::filesystem::path &part) { return part == ".."; });
+}
+
+tl::expected<std::filesystem::path, std::error_code>
+weakly_canonical_absolute(const std::filesystem::path &path) {
+  std::error_code ec;
+  const auto absolute = std::filesystem::absolute(path, ec);
+  if (ec) {
+    return tl::unexpected(ec);
+  }
+  const auto canonical = std::filesystem::weakly_canonical(absolute, ec);
+  if (ec) {
+    return tl::unexpected(ec);
+  }
+  return canonical;
+}
+
+bool escapes_root(const std::filesystem::path &root, const std::filesystem::path &relative) {
+  if (relative.empty() || relative.has_root_path() || contains_dotdot(relative)) {
+    return true;
+  }
+  const auto root_abs = weakly_canonical_absolute(root);
+  const auto dest_abs = weakly_canonical_absolute(root / relative);
+  if (!root_abs || !dest_abs) {
+    return true;
+  }
+  const auto rel = dest_abs->lexically_relative(*root_abs);
+  return rel.empty() || rel.has_root_path() || contains_dotdot(rel);
+}
+
 } // namespace kappan::util

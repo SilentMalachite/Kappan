@@ -214,34 +214,18 @@ struct ParsedTarget {
   return false;
 }
 
-[[nodiscard]] bool contains_dotdot(const std::filesystem::path &rel) {
-  for (const auto &part : rel) {
-    if (part == "..") {
-      return true;
-    }
-  }
-  return false;
-}
-
 [[nodiscard]] Result<std::filesystem::path> weakly_abs(const std::filesystem::path &path) {
-  std::error_code abs_ec;
-  const auto absolute = std::filesystem::absolute(path, abs_ec);
-  if (abs_ec) {
-    return tl::unexpected(path_error(std::format("{}: パスを解決できません: {}",
-                                                 util::to_generic_utf8(path), abs_ec.message())));
+  auto canonical = util::weakly_canonical_absolute(path);
+  if (!canonical) {
+    return tl::unexpected(path_error(std::format(
+        "{}: パスを解決できません: {}", util::to_generic_utf8(path), canonical.error().message())));
   }
-  std::error_code canon_ec;
-  const auto canonical = std::filesystem::weakly_canonical(absolute, canon_ec);
-  if (canon_ec) {
-    return tl::unexpected(path_error(std::format("{}: パスを解決できません: {}",
-                                                 util::to_generic_utf8(path), canon_ec.message())));
-  }
-  return canonical;
+  return *canonical;
 }
 
 [[nodiscard]] Result<void> ensure_inside(const std::filesystem::path &root,
                                          const std::filesystem::path &relative) {
-  if (relative.empty() || relative.has_root_path() || contains_dotdot(relative)) {
+  if (relative.empty() || relative.has_root_path() || util::contains_dotdot(relative)) {
     return tl::unexpected(path_error(
         std::format("{}: 生成ルートの外を参照しています", util::to_generic_utf8(relative))));
   }
@@ -254,7 +238,7 @@ struct ParsedTarget {
     return tl::unexpected(dest_abs.error());
   }
   const auto rel = dest_abs->lexically_relative(*root_abs);
-  if (rel.empty() || rel.has_root_path() || contains_dotdot(rel)) {
+  if (rel.empty() || rel.has_root_path() || util::contains_dotdot(rel)) {
     return tl::unexpected(path_error(
         std::format("{}: 生成ルートの外を参照しています", util::to_generic_utf8(relative))));
   }
