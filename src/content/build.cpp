@@ -170,14 +170,16 @@ BuildResult build_site(const std::filesystem::path &source, const std::filesyste
     return result;
   }
 
-  auto files = scan_markdown(config->content_dir);
-  if (!files) {
-    result.errors.push_back(files.error());
+  auto scanned = scan_markdown(config->content_dir);
+  if (!scanned) {
+    result.errors.push_back(scanned.error());
     return result;
   }
+  // 種別を判定できないエントリがあっても、読めた分のビルドは続ける（AGENTS.md §6）。
+  result.errors.insert(result.errors.end(), scanned->errors.begin(), scanned->errors.end());
 
   std::vector<Document> parsed;
-  for (const auto &file : *files) {
+  for (const auto &file : scanned->files) {
     auto document = parse_document(file, *config);
     if (!document) {
       result.errors.push_back(document.error());

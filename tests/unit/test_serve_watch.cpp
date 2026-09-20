@@ -1,4 +1,5 @@
 #include "content/build.hpp"
+#include "fs_probe.hpp"
 #include "serve/publish.hpp"
 #include "serve/watch.hpp"
 #include "util/path.hpp"
@@ -661,4 +662,72 @@ TEST_CASE("apply_watch_attempt after full failure still full-publishes a static 
   REQUIRE_FALSE(state.should_attempt());
 
   std::filesystem::remove_all(source);
+}
+
+TEST_CASE("snapshot_source reports unresolvable symlinks without throwing", "[serve][watch]") {
+  const auto root = unique_temp("kappan-watch-symlink");
+  std::filesystem::remove_all(root);
+  const auto article = kappan::util::from_utf8("記事かなABC１２🐙.md");
+  write_file(root / "site.yaml", "title: リンクのある監視\n");
+  write_file(root / "content" / article, "# 記事\n");
+  write_file(root / "templates" / "post.html", "<p>{{ content }}</p>\n");
+  write_file(root / "static" / kappan::util::from_utf8("画像🖼.svg"), "<svg/>\n");
+
+  const auto require_io_error = [&](std::string_view fragment) {
+    kappan::Result<kappan::serve::SourceSnapshot> snap =
+        tl::unexpected(kappan::make_error(kappan::ErrorCode::Io, "未実行"));
+    REQUIRE_NOTHROW(snap = kappan::serve::snapshot_source(root));
+    REQUIRE_FALSE(snap);
+    REQUIRE(snap.error().code == kappan::ErrorCode::Io);
+    INFO("message: " << snap.error().message);
+    REQUIRE(snap.error().message.find(fragment) != std::string::npos);
+  };
+
+  // SECTION の中で return すると TEST_CASE の関数ごと抜けてしまい、まだ登録されていない
+  // 兄弟 SECTION が「無かったこと」になる。スキップは必ず if/else で表すこと（AGENTS.md §7）。
+  const auto require_loop_error = [&](const std::filesystem::path &link,
+                                      const std::filesystem::path &target,
+                                      std::string_view fragment) {
+    if (!kappan::testing::try_create_symlink(target, link)) {
+      SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+    } else if (!kappan::testing::status_unresolvable(link)) {
+      SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
+    } else {
+      require_io_error(fragment);
+    }
+  };
+
+  SECTION("templates/ 自体がループなら走査の失敗として報告する") {
+    // add_templates が is_directory(dir, ec) の ec を捨てていた頃は、
+    // 「上書きは無い」と読み違えてスナップショットから静かに落ちていた。
+    std::filesystem::remove_all(root / "templates");
+    require_loop_error(root / "templates", "templates", "テンプレートを走査できません");
+  }
+
+  SECTION("templates/ のエントリがループなら種別の失敗として報告する") {
+    require_loop_error(root / "templates" / "loop.html", "loop.html", "種別を判定できません");
+  }
+
+  SECTION("content/ のエントリがループなら種別の失敗として報告する") {
+    require_loop_error(root / "content" / "loop.md", "loop.md", "種別を判定できません");
+  }
+
+  SECTION("static/ のエントリがループなら種別の失敗として報告する") {
+    require_loop_error(root / "static" / "loop.bin", "loop.bin", "種別を判定できません");
+  }
+
+  SECTION("行き先の無いリンクは黙って飛ばす") {
+    // stat は not_found を返すだけで、判明した種別なのでエラーではない。
+    if (!kappan::testing::try_create_symlink("nowhere.md", root / "content" / "dangling.md")) {
+      SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+    } else {
+      const auto snap = kappan::serve::snapshot_source(root);
+      REQUIRE(snap);
+      REQUIRE_FALSE(snap->entries.contains("content/dangling.md"));
+      REQUIRE(snap->entries.contains(
+          kappan::util::to_generic_utf8(std::filesystem::path{"content"} / article)));
+    }
+  }
+
+  std::filesystem::remove_all(root);
 }

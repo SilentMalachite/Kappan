@@ -165,7 +165,15 @@ constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
                                          const std::filesystem::path &source) {
   const auto templates_dir = source / "templates";
   std::error_code ec;
-  if (!std::filesystem::is_directory(templates_dir, ec)) {
+  // is_directory(dir, ec) の ec を捨てると、templates/ 自体の解決失敗（ELOOP 等）を
+  // 「上書きは無い」と読み違え、スナップショットから静かに落ちる。
+  const auto dir_status = std::filesystem::status(templates_dir, ec);
+  if (!std::filesystem::status_known(dir_status)) {
+    return tl::unexpected(
+        io_error(templates_dir, std::format("{}: テンプレートを走査できません: {}",
+                                            util::to_generic_utf8(templates_dir), ec.message())));
+  }
+  if (!std::filesystem::is_directory(dir_status)) {
     return {};
   }
 

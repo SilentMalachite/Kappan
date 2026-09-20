@@ -3,6 +3,7 @@
 #include <kappan/site.hpp>
 
 #include "content/parse.hpp"
+#include "fs_probe.hpp"
 #include "render/context.hpp"
 #include "render/engine.hpp"
 #include "render/escape.hpp"
@@ -460,4 +461,85 @@ TEST_CASE("explicit pages and tag keep the suffix when title equals the site tit
   const auto rendered_tag = engine->render_tag(site, site.tags.terms.front().slug);
   REQUIRE(rendered_tag);
   require_exact_title_and_og(rendered_tag->html, "一覧サイト — 一覧サイト");
+}
+
+TEST_CASE("Engine::load reports an unresolvable template symlink without throwing") {
+  const auto root = std::filesystem::temp_directory_path() / "kappan-templates-symlink";
+  std::filesystem::remove_all(root);
+  const auto templates = root / "templates";
+  std::filesystem::create_directories(templates);
+
+  kappan::Config config = listing_config();
+  config.source_root = root;
+  config.content_dir = root / "content";
+
+  // SECTION の中で return すると TEST_CASE の関数ごと抜けてしまい、まだ登録されていない
+  // 兄弟 SECTION が「無かったこと」になる。スキップは必ず if/else で表し、末尾の後始末まで
+  // 到達させること（AGENTS.md §7）。
+  const auto require_scan_failure = [&](std::string_view fragment) {
+    kappan::Result<kappan::render::Engine> engine =
+        tl::unexpected(kappan::make_error(kappan::ErrorCode::Io, "未実行"));
+    REQUIRE_NOTHROW(engine = kappan::render::Engine::load(config));
+    REQUIRE_FALSE(engine);
+    REQUIRE(engine.error().code == kappan::ErrorCode::Io);
+    INFO("message: " << engine.error().message);
+    REQUIRE(engine.error().message.find(fragment) != std::string::npos);
+  };
+
+  SECTION("行き先の無いリンクは黙って飛ばす") {
+    if (!kappan::testing::try_create_symlink("nowhere.html", templates / "dangling.html")) {
+      SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+    } else {
+      auto engine = kappan::render::Engine::load(config);
+      REQUIRE(engine);
+    }
+  }
+
+  SECTION("自分を指すループは Io として報告する") {
+    // stat が ELOOP で失敗する。投げるオーバーロードだと Result 境界を貫通していた。
+    if (!kappan::testing::try_create_symlink("loop.html", templates / "loop.html")) {
+      SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+    } else if (!kappan::testing::status_unresolvable(templates / "loop.html")) {
+      SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
+    } else {
+      require_scan_failure("種別を判定できません");
+    }
+  }
+
+  SECTION("開けない templates/ は走査の失敗として報告する") {
+    // 構築に失敗すると end と等しくなり、range-for ではループ本体に入らない。
+    // かつて ec の検査がループ本体にあり、上書きが丸ごと無視されて成功扱いだった。
+    std::filesystem::permissions(templates, std::filesystem::perms::none);
+    std::error_code probe_ec;
+    const std::filesystem::directory_iterator probe(templates, probe_ec);
+    if (!probe_ec) {
+      // Windows の permissions(perms::none) は読み取り専用属性を立てるだけで列挙を止めない。
+      std::filesystem::permissions(templates, std::filesystem::perms::owner_all);
+      SUCCEED("権限が効かない環境ではスキップする");
+    } else {
+      // REQUIRE が落ちると以降が実行されないので、判定より先に権限を戻す。
+      // 戻さないまま抜けると末尾の remove_all が失敗する。
+      kappan::Result<kappan::render::Engine> engine =
+          tl::unexpected(kappan::make_error(kappan::ErrorCode::Io, "未実行"));
+      REQUIRE_NOTHROW(engine = kappan::render::Engine::load(config));
+      std::filesystem::permissions(templates, std::filesystem::perms::owner_all);
+      REQUIRE_FALSE(engine);
+      REQUIRE(engine.error().code == kappan::ErrorCode::Io);
+      INFO("message: " << engine.error().message);
+      REQUIRE(engine.error().message.find("テンプレートを走査できません") != std::string::npos);
+    }
+  }
+
+  SECTION("templates/ 自体がループなら走査の失敗として報告する") {
+    std::filesystem::remove(templates);
+    if (!kappan::testing::try_create_symlink("templates", root / "templates")) {
+      SUCCEED("シンボリックリンクを作れない環境ではスキップする");
+    } else if (!kappan::testing::status_unresolvable(root / "templates")) {
+      SUCCEED("循環リンクを解決できてしまう環境ではスキップする");
+    } else {
+      require_scan_failure("テンプレートを走査できません");
+    }
+  }
+
+  std::filesystem::remove_all(root);
 }
