@@ -7,6 +7,24 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-20
+
+### 修正
+
+- `content/` と `templates/` の走査が循環シンボリックリンクで `std::filesystem_error` を
+  投げなくなりました。該当エントリをパス付きの `ErrorCode::Io` として報告し、残りのビルドは
+  続行します。`static/` の従来の挙動に揃えたものです
+- 開けないディレクトリを空のディレクトリと取り違えなくなりました。イテレータ構築時の
+  `error_code` をループ本体で検査していたため、構築に失敗すると本体が一度も実行されず、
+  テンプレートの上書きが黙って無視されたままビルドが成功扱いになっていました
+- 解決できない `content/` や `templates/` を「ディレクトリがありません」ではなく、
+  走査の失敗として報告するようになりました
+
+### 変更
+
+- パス安全性の判定（`contains_dotdot`、weakly canonical 解決、ルート内判定）を 1 箇所に
+  まとめました。3 つの写しが独立に変わりうる状態を解消しています
+
 ## [0.1.2] - 2026-08-30
 
 ### 修正
@@ -85,7 +103,8 @@
   手順は README の「インストール」節にあります
 - 配布方針の判断は [ADR-0011](docs/ja/adr/0011-release-distribution.md) に記録しています
 
-[Unreleased]: https://github.com/SilentMalachite/Kappan/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/SilentMalachite/Kappan/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/SilentMalachite/Kappan/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/SilentMalachite/Kappan/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/SilentMalachite/Kappan/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/SilentMalachite/Kappan/releases/tag/v0.1.0

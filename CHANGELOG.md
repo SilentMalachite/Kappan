@@ -7,6 +7,24 @@ and versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-20
+
+### Fixed
+
+- Scanning `content/` and `templates/` no longer throws `std::filesystem_error` when it meets a
+  circular symlink. The entry is reported as `ErrorCode::Io` with its path and the build keeps
+  going, matching how `static/` already behaved
+- A directory that cannot be opened is no longer mistaken for an empty one. The `error_code` from
+  the iterator constructor was checked inside the loop body, which never ran when construction
+  failed, so template overrides were silently ignored and the build reported success
+- `content/` or `templates/` that cannot be resolved is now reported as a scan failure instead of
+  "the directory does not exist"
+
+### Changed
+
+- Path-safety checks (`contains_dotdot`, weakly canonical resolution, root containment) live in one
+  place instead of three copies that could drift apart
+
 ## [0.1.2] - 2026-08-30
 
 ### Fixed
@@ -87,7 +105,8 @@ First release.
   run; see the Install section of the README
 - The distribution decisions are recorded in [ADR-0011](docs/adr/0011-release-distribution.md)
 
-[Unreleased]: https://github.com/SilentMalachite/Kappan/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/SilentMalachite/Kappan/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/SilentMalachite/Kappan/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/SilentMalachite/Kappan/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/SilentMalachite/Kappan/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/SilentMalachite/Kappan/releases/tag/v0.1.0
